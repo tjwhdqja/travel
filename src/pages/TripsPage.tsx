@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
-import LocationInput from '../components/LocationInput'
 
 interface Trip {
   id: string
@@ -15,6 +14,51 @@ interface Trip {
 }
 
 type FormState = { name: string; destination: string; start_date: string; end_date: string; budget: string }
+
+const DESTINATIONS = [
+  { region: '🇯🇵 일본', places: ['오사카', '도쿄', '교토', '후쿠오카', '삿포로', '오키나와', '나고야', '나라'] },
+  { region: '🌏 동남아', places: ['방콕', '발리', '다낭', '세부', '싱가포르', '푸켓', '하노이', '호치민', '쿠알라룸푸르', '치앙마이'] },
+  { region: '🇨🇳 중화권', places: ['홍콩', '마카오', '상하이', '베이징', '타이베이'] },
+  { region: '🌍 유럽·중동', places: ['파리', '로마', '바르셀로나', '런던', '프라하', '암스테르담', '두바이', '이스탄불'] },
+  { region: '🌎 미주·오세아니아', places: ['하와이', '괌', '사이판', '뉴욕', 'LA', '시드니', '뉴질랜드'] },
+  { region: '🇰🇷 국내', places: ['제주도', '부산', '강릉', '경주', '여수', '전주'] },
+]
+
+function DestinationInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="여행지 선택 또는 직접 입력"
+        required
+        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+      />
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white rounded-2xl shadow-xl border border-gray-100 max-h-72 overflow-y-auto">
+          {DESTINATIONS.map(group => (
+            <div key={group.region}>
+              <p className="px-4 pt-2.5 pb-1 text-xs font-semibold text-gray-400">{group.region}</p>
+              <div className="flex flex-wrap gap-1.5 px-3 pb-2.5">
+                {group.places.map(place => (
+                  <button key={place} type="button"
+                    onMouseDown={() => { onChange(place); setOpen(false) }}
+                    className="px-3 py-1.5 text-sm rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition">
+                    {place}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface TripFormProps {
   form: FormState
@@ -37,11 +81,7 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
           required
           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
         />
-        <LocationInput
-          value={form.destination}
-          onChange={v => setForm({ ...form, destination: v })}
-          placeholder="여행지 (예: 일본 오사카)"
-        />
+        <DestinationInput value={form.destination} onChange={v => setForm({ ...form, destination: v })} />
         <div className="flex gap-2">
           <div className="flex-1">
             <label className="text-xs text-gray-500 mb-1 block">출발일</label>
