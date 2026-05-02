@@ -92,13 +92,31 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
             <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
           </div>
         </div>
-        <input
-          type="number"
-          placeholder="총 예산 (원, 선택)"
-          value={form.budget}
-          onChange={e => setForm({ ...form, budget: e.target.value })}
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-        />
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {[10, 50, 100, 200, 300, 500].map(wan => (
+              <button key={wan} type="button"
+                onClick={() => setForm({ ...form, budget: String(wan * 10000) })}
+                className="px-3 py-1.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition">
+                {wan}만
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="총 예산 (선택)"
+              value={form.budget ? Number(form.budget).toLocaleString('ko-KR') : ''}
+              onChange={e => {
+                const raw = e.target.value.replace(/,/g, '')
+                if (raw === '' || /^\d+$/.test(raw)) setForm({ ...form, budget: raw })
+              }}
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+            />
+            {form.budget && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>}
+          </div>
+        </div>
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
           <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">{submitLabel}</button>
