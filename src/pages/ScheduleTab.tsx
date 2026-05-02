@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
@@ -110,6 +110,112 @@ function LocationInput({ value, onChange }: { value: string; onChange: (v: strin
   )
 }
 
+function RouteConnector({ from, to }: { from: string | null; to: string | null }) {
+  return (
+    <div className="flex items-center gap-2 pl-5 my-0.5">
+      <div className="w-0.5 h-5 bg-gray-200 ml-1.5" />
+      {from && to && (
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`}
+          target="_blank" rel="noopener noreferrer"
+          className="text-xs text-gray-400 hover:text-indigo-400 transition-colors"
+        >
+          🗺️ 경로
+        </a>
+      )}
+    </div>
+  )
+}
+
+interface NearbyPlace { name: string; address: string; rating: number | null; ratingCount: number | null }
+
+function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
+  const [loading, setLoading] = useState(false)
+  const [places, setPlaces] = useState<NearbyPlace[]>([])
+  const [label, setLabel] = useState('')
+  const [error, setError] = useState('')
+
+  function getTypeByTime(): { type: string; label: string } {
+    const h = new Date().getHours()
+    if (h >= 6 && h < 10) return { type: 'cafe', label: '☕ 카페 추천' }
+    if (h >= 10 && h < 12) return { type: 'tourist_attraction', label: '🎡 관광지 추천' }
+    if (h >= 12 && h < 14) return { type: 'restaurant', label: '🍽 점심 식당 추천' }
+    if (h >= 14 && h < 18) return { type: 'tourist_attraction', label: '🎡 관광지 추천' }
+    if (h >= 18 && h < 21) return { type: 'restaurant', label: '🍽 저녁 식당 추천' }
+    return { type: 'convenience_store', label: '🏪 편의점 추천' }
+  }
+
+  async function fetchNearby() {
+    setLoading(true); setError('')
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+      )
+      const { type, label: l } = getTypeByTime()
+      setLabel(l)
+      const res = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': MAPS_API_KEY,
+          'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.rating,places.userRatingCount',
+        },
+        body: JSON.stringify({
+          includedTypes: [type], maxResultCount: 8,
+          locationRestriction: { circle: { center: { latitude: pos.coords.latitude, longitude: pos.coords.longitude }, radius: 500 } },
+        }),
+      })
+      const data = await res.json()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setPlaces((data.places ?? []).map((p: any) => ({
+        name: p.displayName?.text ?? '', address: p.formattedAddress ?? '',
+        rating: p.rating ?? null, ratingCount: p.userRatingCount ?? null,
+      })))
+    } catch (e: unknown) {
+      setError((e as GeolocationPositionError)?.code === 1 ? '위치 권한을 허용해주세요' : '주변 장소를 불러오지 못했습니다')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="font-semibold text-sm text-gray-800">📍 주변 추천 장소</p>
+        {label && <span className="text-xs text-indigo-500">{label}</span>}
+      </div>
+      {places.length === 0 ? (
+        <button onClick={fetchNearby} disabled={loading}
+          className="w-full py-2.5 rounded-xl bg-indigo-50 text-indigo-600 text-sm hover:bg-indigo-100 disabled:opacity-60 transition">
+          {loading ? '📡 위치 확인 중...' : '현재 위치 기반 추천 보기'}
+        </button>
+      ) : (
+        <>
+          <div className="divide-y divide-gray-50">
+            {places.map((p, i) => (
+              <div key={i} className="flex items-start gap-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{p.address}</p>
+                  {p.rating && <p className="text-xs text-amber-500 mt-0.5">⭐ {p.rating.toFixed(1)} ({p.ratingCount?.toLocaleString()}개)</p>}
+                </div>
+                <div className="flex gap-1.5 flex-shrink-0 mt-0.5">
+                  <a href={`https://maps.google.com/?q=${encodeURIComponent(p.name)}`} target="_blank" rel="noopener noreferrer"
+                    className="px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs rounded-lg hover:bg-gray-200">지도</a>
+                  <button onClick={() => onAdd(p.name)}
+                    className="px-2.5 py-1.5 bg-indigo-500 text-white text-xs rounded-lg hover:bg-indigo-600">+ 추가</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={fetchNearby} disabled={loading} className="text-xs text-gray-400 hover:text-indigo-400 w-full text-center">
+            {loading ? '불러오는 중...' : '새로고침'}
+          </button>
+        </>
+      )}
+      {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+    </div>
+  )
+}
+
 function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
   function toggleParticipant(name: string) {
     const next = form.participants.includes(name)
@@ -212,40 +318,39 @@ function SortableScheduleItem({ item, editingId, form, setForm, members, startDa
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-white rounded-xl p-4 shadow-sm flex items-start gap-3">
-      <button
-        {...attributes} {...listeners}
-        className="flex-shrink-0 cursor-grab active:cursor-grabbing mt-1 grid grid-cols-2 gap-[3px] p-1 rounded hover:bg-gray-100"
-      >
-        {[...Array(6)].map((_, i) => (
-          <span key={i} className="block w-[3px] h-[3px] rounded-full bg-gray-300" />
-        ))}
-      </button>
-      <div className="flex flex-col items-center min-w-[36px]">
-        <span className="text-xl">{getCategoryEmoji(item.category)}</span>
-        <span className="text-xs font-medium text-indigo-500 mt-0.5">
-          {item.time ? item.time.slice(0, 5) : <span className="text-gray-300">미정</span>}
+    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+      <div className="flex flex-col items-center w-12 flex-shrink-0 pt-2">
+        <span className="text-[11px] text-gray-400 font-medium leading-none tabular-nums">
+          {item.time ? item.time.slice(0, 5) : ''}
         </span>
+        <div className="w-3 h-3 rounded-full bg-indigo-400 mt-1 ring-2 ring-white shadow-sm flex-shrink-0" />
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-800 text-sm">{item.title}</p>
-        {item.location && (
-          <a href={`https://maps.google.com/?q=${encodeURIComponent(item.location)}`} target="_blank" rel="noopener noreferrer"
-            className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 hover:text-indigo-400 transition-colors"
-          >
-            📍 {item.location}
-          </a>
-        )}
-        {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
-        {item.participants?.length > 0 && (
-          <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
-        )}
-        {item.created_by && <p className="text-xs text-gray-300 mt-1">{item.created_by}</p>}
+      <div className="flex-1 bg-white rounded-xl px-3 py-2.5 shadow-sm flex items-start gap-2 min-w-0">
+        <span className="text-lg leading-none mt-0.5 flex-shrink-0">{getCategoryEmoji(item.category)}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-gray-800 text-sm">{item.title}</p>
+          {item.location && (
+            <a href={`https://maps.google.com/?q=${encodeURIComponent(item.location)}`} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 hover:text-indigo-400 transition-colors">
+              📍 {item.location}
+            </a>
+          )}
+          {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
+          {item.participants?.length > 0 && (
+            <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button {...attributes} {...listeners}
+            className="cursor-grab active:cursor-grabbing grid grid-cols-2 gap-[3px] p-1.5 rounded hover:bg-gray-100">
+            {[...Array(6)].map((_, i) => <span key={i} className="block w-[3px] h-[3px] rounded-full bg-gray-300" />)}
+          </button>
+          <HamburgerMenu items={[
+            { label: '수정', onClick: () => onStartEdit(item) },
+            { label: '삭제', onClick: () => onDelete(item.id), danger: true },
+          ]} />
+        </div>
       </div>
-      <HamburgerMenu items={[
-        { label: '수정', onClick: () => onStartEdit(item) },
-        { label: '삭제', onClick: () => onDelete(item.id), danger: true },
-      ]} />
     </div>
   )
 }
@@ -280,6 +385,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
   const [members, setMembers] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [showNearby, setShowNearby] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
@@ -368,6 +474,13 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     setForm({ date: item.date, time: item.time ?? '', title: item.title, location: item.location ?? '', note: item.note ?? '', participants: item.participants ?? [], category: item.category ?? '기타' })
   }
 
+  function addFromNearby(name: string) {
+    setShowNearby(false)
+    setShowForm(true)
+    setEditingId(null)
+    setForm({ ...emptyForm(startDate), location: name })
+  }
+
   async function deleteSchedule(id: string) {
     await supabase.from('schedules').delete().eq('id', id)
     setSchedules(prev => prev.filter(s => s.id !== id))
@@ -393,12 +506,22 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
 
   return (
     <div className="space-y-4">
-      <button
-        onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm(startDate)) }}
-        className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
-      >
-        + 일정 추가
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => { setShowForm(true); setShowNearby(false); setEditingId(null); setForm(emptyForm(startDate)) }}
+          className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
+        >
+          + 일정 추가
+        </button>
+        <button
+          onClick={() => { setShowNearby(v => !v); setShowForm(false) }}
+          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showNearby ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+        >
+          📍 주변
+        </button>
+      </div>
+
+      {showNearby && <NearbyRecommendations onAdd={addFromNearby} />}
 
       {showForm && (
         <div className="bg-white rounded-2xl shadow-sm p-5">
@@ -432,15 +555,20 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
                 ) : (
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleDragEnd(e, date)}>
                     <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                      <div className="space-y-2">
-                        {items.map(item => (
-                          <SortableScheduleItem
-                            key={item.id} item={item} editingId={editingId}
-                            form={form} setForm={setForm} members={members}
-                            startDate={startDate} endDate={endDate}
-                            onStartEdit={startEdit} onDelete={deleteSchedule}
-                            onUpdate={updateSchedule} onCancelEdit={() => setEditingId(null)}
-                          />
+                      <div>
+                        {items.map((item, index) => (
+                          <Fragment key={item.id}>
+                            <SortableScheduleItem
+                              item={item} editingId={editingId}
+                              form={form} setForm={setForm} members={members}
+                              startDate={startDate} endDate={endDate}
+                              onStartEdit={startEdit} onDelete={deleteSchedule}
+                              onUpdate={updateSchedule} onCancelEdit={() => setEditingId(null)}
+                            />
+                            {index < items.length - 1 && (
+                              <RouteConnector from={item.location} to={items[index + 1].location} />
+                            )}
+                          </Fragment>
                         ))}
                       </div>
                     </SortableContext>
