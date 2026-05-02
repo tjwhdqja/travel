@@ -163,7 +163,12 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   }
 
   async function fetchTrips() {
-    const { data } = await supabase.from('trips').select('*').order('created_at', { ascending: false })
+    const { data: memberData } = await supabase
+      .from('trip_members').select('trip_id').eq('name', nickname)
+    const tripIds = memberData?.map(m => m.trip_id) ?? []
+    if (tripIds.length === 0) { setTrips([]); setLoading(false); return }
+    const { data } = await supabase
+      .from('trips').select('*').in('id', tripIds).order('created_at', { ascending: false })
     setTrips(data ?? [])
     setLoading(false)
   }
@@ -176,6 +181,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
       budget: Number(form.budget) || 0
     }]).select().single()
     if (data) {
+      await supabase.from('trip_members').insert([{ trip_id: data.id, name: nickname }])
       setTrips([data, ...trips])
       setShowForm(false)
       setForm(emptyForm)
