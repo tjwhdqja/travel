@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import type { Session } from '@supabase/supabase-js'
 
 interface Trip {
   id: string
@@ -12,7 +11,7 @@ interface Trip {
   created_at: string
 }
 
-export default function TripsPage({ session, nickname }: { session: Session; nickname: string }) {
+export default function TripsPage({ nickname }: { nickname: string }) {
   const navigate = useNavigate()
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
