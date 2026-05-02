@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Loader } from '@googlemaps/js-api-loader'
@@ -64,9 +65,9 @@ function LocationInput({ value, onChange }: { value: string; onChange: (v: strin
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    mapsLoader.load().then(google => {
+    mapsLoader.importLibrary('places').then(places => {
       if (!inputRef.current) return
-      const ac = new google.maps.places.Autocomplete(inputRef.current, { fields: ['name'] })
+      const ac = new (places as google.maps.PlacesLibrary).Autocomplete(inputRef.current, { fields: ['name'] })
       ac.addListener('place_changed', () => {
         const place = ac.getPlace()
         onChange(place.name ?? inputRef.current?.value ?? '')

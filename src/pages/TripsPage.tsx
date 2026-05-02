@@ -130,7 +130,7 @@ export default function TripsPage({ nickname }: { nickname: string }) {
       budget: trip.budget > 0 ? String(trip.budget) : ''
     })
     setShowForm(false)
-    setOpenMenu(null)
+
   }
 
   function cancelForm() {
