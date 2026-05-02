@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PillButton from '../components/PillButton'
 
@@ -17,6 +17,7 @@ interface Props {
   tripId: string
   userName: string
   budget?: number
+  members: string[]
 }
 
 const CATEGORIES = [
@@ -30,32 +31,17 @@ const CATEGORIES = [
 
 const CURRENCIES = ['KRW', 'JPY', 'USD', 'EUR', 'CNY', 'THB']
 
-export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
+export default function ExpenseTab({ tripId, userName, budget = 0, members }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
-  const [members, setMembers] = useState<string[]>([])
-  const [allProfiles, setAllProfiles] = useState<string[]>([])
   const [rates, setRates] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [showMembers, setShowMembers] = useState(false)
-  const [showDropdown, setShowDropdown] = useState(false)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const [form, setForm] = useState({
     title: '', amount: '', paid_by: userName,
     split_with: [] as string[], category: '식비', currency: 'KRW'
   })
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
 
   useEffect(() => {
     if (userName) fetchAll()
@@ -87,30 +73,9 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
   }
 
   async function fetchAll() {
-    const [{ data: exp }, { data: mem }, { data: profiles }] = await Promise.all([
-      supabase.from('expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false }),
-      supabase.from('trip_members').select('name').eq('trip_id', tripId),
-      supabase.from('profiles').select('nickname')
-    ])
+    const { data: exp } = await supabase.from('expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false })
     setExpenses(exp ?? [])
-    const names = mem?.map(m => m.name) ?? []
-    setMembers(names)
-    setAllProfiles(profiles?.map(p => p.nickname) ?? [])
-    if (names.length > 0 && form.split_with.length === 0) {
-      setForm(f => ({ ...f, split_with: names }))
-    }
     setLoading(false)
-  }
-
-  async function addMember(nickname: string) {
-    if (!nickname || members.includes(nickname)) return
-    await supabase.from('trip_members').insert([{ trip_id: tripId, name: nickname }])
-    setMembers(prev => [...prev, nickname])
-  }
-
-  async function removeMember(name: string) {
-    await supabase.from('trip_members').delete().eq('trip_id', tripId).eq('name', name)
-    setMembers(prev => prev.filter(m => m !== name))
   }
 
   async function addExpense(e: React.FormEvent) {
@@ -201,61 +166,12 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => { setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: members, category: '식비', currency: 'KRW' }) }}
-          className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition text-sm"
-        >
-          + 지출 추가
-        </button>
-        <button
-          onClick={() => setShowMembers(!showMembers)}
-          className="px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
-        >
-          👥 멤버
-        </button>
-      </div>
-
-      {showMembers && (
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <h3 className="font-bold text-gray-800 mb-3">여행 멤버</h3>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {members.length === 0 && <p className="text-sm text-gray-400">아직 멤버가 없어요</p>}
-            {members.map(m => (
-              <span key={m} className="flex items-center gap-1 bg-indigo-50 text-indigo-600 text-sm px-3 py-1 rounded-full">
-                {m}
-                <button onClick={() => removeMember(m)} className="text-indigo-300 hover:text-red-400 ml-1">✕</button>
-              </span>
-            ))}
-          </div>
-          <div ref={dropdownRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setShowDropdown(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition"
-            >
-              <span>멤버 추가하기</span>
-              <span className="text-gray-400">{showDropdown ? '▲' : '▼'}</span>
-            </button>
-            {showDropdown && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                {allProfiles.filter(p => !members.includes(p)).length === 0 ? (
-                  <p className="px-4 py-3 text-sm text-gray-400">추가할 수 있는 멤버가 없어요</p>
-                ) : (
-                  allProfiles.filter(p => !members.includes(p)).map(p => (
-                    <button key={p} type="button"
-                      onClick={() => { addMember(p); setShowDropdown(false) }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                    >
-                      {p}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <button
+        onClick={() => { setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW' }) }}
+        className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition text-sm"
+      >
+        + 지출 추가
+      </button>
 
       {showForm && (
         <div className="bg-white rounded-2xl shadow-sm p-5">

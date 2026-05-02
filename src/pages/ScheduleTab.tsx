@@ -3,10 +3,6 @@ import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
-import type { DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
 
@@ -30,7 +26,6 @@ type FormState = {
   title: string
   location: string
   note: string
-  participants: string[]
   category: string
 }
 
@@ -50,7 +45,6 @@ function getCategoryEmoji(category: string) {
 interface FormProps {
   form: FormState
   setForm: (f: FormState) => void
-  members: string[]
   startDate: string
   endDate: string
   onSubmit: (e: React.FormEvent) => void
@@ -267,14 +261,7 @@ function AIScheduleGenerator({ destination, startDate, endDate, onAddAll }: AIGe
   )
 }
 
-function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
-  function toggleParticipant(name: string) {
-    const next = form.participants.includes(name)
-      ? form.participants.filter(n => n !== name)
-      : [...form.participants, name]
-    setForm({ ...form, participants: next })
-  }
-
+function ScheduleForm({ form, setForm, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <div>
@@ -313,18 +300,6 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
         onChange={e => setForm({ ...form, note: e.target.value })} rows={2}
         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm resize-none"
       />
-      {members.length > 0 && (
-        <div>
-          <label className="text-xs text-gray-500 mb-2 block">참여 인원 (선택)</label>
-          <div className="flex flex-wrap gap-2">
-            {members.map(m => (
-              <PillButton key={m} label={m} selected={form.participants.includes(m)}
-                onClick={() => toggleParticipant(m)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
       <div className="flex gap-2">
         <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
         <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">{submitLabel}</button>
@@ -333,12 +308,11 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
   )
 }
 
-interface SortableItemProps {
+interface ItemProps {
   item: Schedule
   editingId: string | null
   form: FormState
   setForm: (f: FormState) => void
-  members: string[]
   startDate: string
   endDate: string
   onStartEdit: (item: Schedule) => void
@@ -347,20 +321,12 @@ interface SortableItemProps {
   onCancelEdit: () => void
 }
 
-function SortableScheduleItem({ item, editingId, form, setForm, members, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit }: SortableItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
-
+function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit }: ItemProps) {
   if (editingId === item.id) {
     return (
-      <div ref={setNodeRef} style={style} className="bg-white rounded-xl p-4 shadow-sm">
+      <div className="bg-white rounded-xl p-4 shadow-sm">
         <h3 className="font-bold text-gray-800 mb-3 text-sm">일정 수정</h3>
-        <ScheduleForm form={form} setForm={setForm} members={members}
+        <ScheduleForm form={form} setForm={setForm}
           startDate={startDate} endDate={endDate}
           onSubmit={onUpdate} submitLabel="저장" onCancel={onCancelEdit}
         />
@@ -369,7 +335,7 @@ function SortableScheduleItem({ item, editingId, form, setForm, members, startDa
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-start gap-2">
+    <div className="flex items-start gap-2">
       <div className="flex flex-col items-center w-12 flex-shrink-0 pt-2">
         <span className="text-[11px] text-gray-400 font-medium leading-none tabular-nums">
           {item.time ? item.time.slice(0, 5) : ''}
@@ -387,20 +353,11 @@ function SortableScheduleItem({ item, editingId, form, setForm, members, startDa
             </a>
           )}
           {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
-          {item.participants?.length > 0 && (
-            <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
-          )}
         </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button {...attributes} {...listeners}
-            className="cursor-grab active:cursor-grabbing grid grid-cols-2 gap-[3px] p-1.5 rounded hover:bg-gray-100">
-            {[...Array(6)].map((_, i) => <span key={i} className="block w-[3px] h-[3px] rounded-full bg-gray-300" />)}
-          </button>
-          <HamburgerMenu items={[
-            { label: '수정', onClick: () => onStartEdit(item) },
-            { label: '삭제', onClick: () => onDelete(item.id), danger: true },
-          ]} />
-        </div>
+        <HamburgerMenu items={[
+          { label: '수정', onClick: () => onStartEdit(item) },
+          { label: '삭제', onClick: () => onDelete(item.id), danger: true },
+        ]} />
       </div>
     </div>
   )
@@ -415,7 +372,7 @@ interface Props {
 }
 
 const emptyForm = (date: string): FormState => ({
-  date, time: '', title: '', location: '', note: '', participants: [], category: '기타'
+  date, time: '', title: '', location: '', note: '', category: '기타'
 })
 
 function getAllDates(start: string, end: string): string[] {
@@ -434,15 +391,12 @@ function getAllDates(start: string, end: string): string[] {
 
 export default function ScheduleTab({ tripId, userName, startDate, endDate, destination }: Props) {
   const [schedules, setSchedules] = useState<Schedule[]>([])
-  const [members, setMembers] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showNearby, setShowNearby] = useState(false)
   const [showAI, setShowAI] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   useEffect(() => {
     if (userName) fetchAll()
@@ -465,12 +419,8 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   }, [tripId])
 
   async function fetchAll() {
-    const [{ data: scheduleData }, { data: memberData }] = await Promise.all([
-      supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('sort_order').order('time'),
-      supabase.from('trip_members').select('name').eq('trip_id', tripId)
-    ])
+    const { data: scheduleData } = await supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('sort_order').order('time')
     setSchedules(scheduleData ?? [])
-    setMembers(memberData?.map(m => m.name) ?? [])
     setLoading(false)
   }
 
@@ -480,19 +430,6 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
       if (a.sort_order !== b.sort_order) return (a.sort_order ?? 0) - (b.sort_order ?? 0)
       return (a.time ?? '').localeCompare(b.time ?? '')
     })
-  }
-
-  async function handleDragEnd(event: DragEndEvent, date: string) {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-
-    const dayItems = schedules.filter(s => s.date === date)
-    const oldIndex = dayItems.findIndex(s => s.id === active.id)
-    const newIndex = dayItems.findIndex(s => s.id === over.id)
-    const reordered = arrayMove(dayItems, oldIndex, newIndex).map((s, idx) => ({ ...s, sort_order: idx }))
-
-    setSchedules(prev => sorted([...prev.filter(s => s.date !== date), ...reordered]))
-    await Promise.all(reordered.map(s => supabase.from('schedules').update({ sort_order: s.sort_order }).eq('id', s.id)))
   }
 
   async function addSchedule(e: React.FormEvent) {
@@ -513,7 +450,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     e.preventDefault()
     const { data } = await supabase
       .from('schedules')
-      .update({ date: form.date, time: form.time || null, title: form.title, location: form.location || null, note: form.note || null, participants: form.participants, category: form.category })
+      .update({ date: form.date, time: form.time || null, title: form.title, location: form.location || null, note: form.note || null, category: form.category })
       .eq('id', editingId).select().single()
     if (data) {
       setSchedules(prev => sorted(prev.map(s => s.id === editingId ? data : s)))
@@ -524,7 +461,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   function startEdit(item: Schedule) {
     setEditingId(item.id)
     setShowForm(false)
-    setForm({ date: item.date, time: item.time ?? '', title: item.title, location: item.location ?? '', note: item.note ?? '', participants: item.participants ?? [], category: item.category ?? '기타' })
+    setForm({ date: item.date, time: item.time ?? '', title: item.title, location: item.location ?? '', note: item.note ?? '', category: item.category ?? '기타' })
   }
 
   async function addAllFromAI(days: AIDay[]) {
@@ -603,7 +540,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
       {showForm && (
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <h3 className="font-bold text-gray-800 mb-4">새 일정</h3>
-          <ScheduleForm form={form} setForm={setForm} members={members}
+          <ScheduleForm form={form} setForm={setForm}
             startDate={startDate} endDate={endDate}
             onSubmit={addSchedule} submitLabel="추가" onCancel={() => setShowForm(false)}
           />
@@ -630,26 +567,22 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
                     <p className="text-xs text-gray-300">일정 없음</p>
                   </div>
                 ) : (
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleDragEnd(e, date)}>
-                    <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
-                      <div>
-                        {items.map((item, index) => (
-                          <Fragment key={item.id}>
-                            <SortableScheduleItem
-                              item={item} editingId={editingId}
-                              form={form} setForm={setForm} members={members}
-                              startDate={startDate} endDate={endDate}
-                              onStartEdit={startEdit} onDelete={deleteSchedule}
-                              onUpdate={updateSchedule} onCancelEdit={() => setEditingId(null)}
-                            />
-                            {index < items.length - 1 && (
-                              <RouteConnector from={item.location} to={items[index + 1].location} />
-                            )}
-                          </Fragment>
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
+                  <div>
+                    {items.map((item, index) => (
+                      <Fragment key={item.id}>
+                        <ScheduleItem
+                          item={item} editingId={editingId}
+                          form={form} setForm={setForm}
+                          startDate={startDate} endDate={endDate}
+                          onStartEdit={startEdit} onDelete={deleteSchedule}
+                          onUpdate={updateSchedule} onCancelEdit={() => setEditingId(null)}
+                        />
+                        {index < items.length - 1 && (
+                          <RouteConnector from={item.location} to={items[index + 1].location} />
+                        )}
+                      </Fragment>
+                    ))}
+                  </div>
                 )}
               </div>
             )
