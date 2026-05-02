@@ -10,13 +10,22 @@ interface Schedule {
   location: string | null
   note: string | null
   created_by: string | null
+  participants: string[]
 }
 
-type FormState = { date: string; time: string; title: string; location: string; note: string }
+type FormState = {
+  date: string
+  time: string
+  title: string
+  location: string
+  note: string
+  participants: string[]
+}
 
 interface FormProps {
   form: FormState
   setForm: (f: FormState) => void
+  members: string[]
   startDate: string
   endDate: string
   onSubmit: (e: React.FormEvent) => void
@@ -24,7 +33,14 @@ interface FormProps {
   onCancel: () => void
 }
 
-function ScheduleForm({ form, setForm, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
+function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
+  function toggleParticipant(name: string) {
+    const next = form.participants.includes(name)
+      ? form.participants.filter(n => n !== name)
+      : [...form.participants, name]
+    setForm({ ...form, participants: next })
+  }
+
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <div className="flex gap-2">
@@ -70,6 +86,27 @@ function ScheduleForm({ form, setForm, startDate, endDate, onSubmit, submitLabel
         rows={2}
         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm resize-none"
       />
+      {members.length > 0 && (
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block">참여 인원 (선택)</label>
+          <div className="flex flex-wrap gap-2">
+            {members.map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => toggleParticipant(m)}
+                className={`px-3 py-1.5 rounded-full text-sm transition ${
+                  form.participants.includes(m)
+                    ? 'bg-indigo-100 text-indigo-600'
+                    : 'bg-gray-100 text-gray-400'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex gap-2">
         <button
           type="button"
@@ -96,25 +133,29 @@ interface Props {
   endDate: string
 }
 
+const emptyForm = (date: string): FormState => ({
+  date, time: '', title: '', location: '', note: '', participants: []
+})
+
 export default function ScheduleTab({ tripId, userName, startDate, endDate }: Props) {
   const [schedules, setSchedules] = useState<Schedule[]>([])
+  const [members, setMembers] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>({ date: startDate, time: '', title: '', location: '', note: '' })
+  const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
   useEffect(() => {
-    fetchSchedules()
+    fetchAll()
   }, [tripId])
 
-  async function fetchSchedules() {
-    const { data } = await supabase
-      .from('schedules')
-      .select('*')
-      .eq('trip_id', tripId)
-      .order('date')
-      .order('time')
-    setSchedules(data ?? [])
+  async function fetchAll() {
+    const [{ data: scheduleData }, { data: memberData }] = await Promise.all([
+      supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('time'),
+      supabase.from('trip_members').select('name').eq('trip_id', tripId)
+    ])
+    setSchedules(scheduleData ?? [])
+    setMembers(memberData?.map(m => m.name) ?? [])
     setLoading(false)
   }
 
@@ -135,7 +176,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     if (data) {
       setSchedules(prev => sorted([...prev, data]))
       setShowForm(false)
-      setForm({ date: startDate, time: '', title: '', location: '', note: '' })
+      setForm(emptyForm(startDate))
     }
   }
 
@@ -143,7 +184,14 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     e.preventDefault()
     const { data } = await supabase
       .from('schedules')
-      .update({ date: form.date, time: form.time || null, title: form.title, location: form.location || null, note: form.note || null })
+      .update({
+        date: form.date,
+        time: form.time || null,
+        title: form.title,
+        location: form.location || null,
+        note: form.note || null,
+        participants: form.participants
+      })
       .eq('id', editingId)
       .select()
       .single()
@@ -162,6 +210,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
       title: item.title,
       location: item.location ?? '',
       note: item.note ?? '',
+      participants: item.participants ?? []
     })
   }
 
@@ -191,11 +240,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
   return (
     <div className="space-y-4">
       <button
-        onClick={() => {
-          setShowForm(true)
-          setEditingId(null)
-          setForm({ date: startDate, time: '', title: '', location: '', note: '' })
-        }}
+        onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm(startDate)) }}
         className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
       >
         + 일정 추가
@@ -205,12 +250,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <h3 className="font-bold text-gray-800 mb-4">새 일정</h3>
           <ScheduleForm
-            form={form}
-            setForm={setForm}
-            startDate={startDate}
-            endDate={endDate}
-            onSubmit={addSchedule}
-            submitLabel="추가"
+            form={form} setForm={setForm} members={members}
+            startDate={startDate} endDate={endDate}
+            onSubmit={addSchedule} submitLabel="추가"
             onCancel={() => setShowForm(false)}
           />
         </div>
@@ -240,12 +282,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
                     <div className="bg-white rounded-xl p-4 shadow-sm">
                       <h3 className="font-bold text-gray-800 mb-3 text-sm">일정 수정</h3>
                       <ScheduleForm
-                        form={form}
-                        setForm={setForm}
-                        startDate={startDate}
-                        endDate={endDate}
-                        onSubmit={updateSchedule}
-                        submitLabel="저장"
+                        form={form} setForm={setForm} members={members}
+                        startDate={startDate} endDate={endDate}
+                        onSubmit={updateSchedule} submitLabel="저장"
                         onCancel={() => setEditingId(null)}
                       />
                     </div>
@@ -262,6 +301,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
                         <p className="font-medium text-gray-800 text-sm">{item.title}</p>
                         {item.location && <p className="text-xs text-gray-400 mt-0.5">📍 {item.location}</p>}
                         {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
+                        {item.participants?.length > 0 && (
+                          <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
+                        )}
                         {item.created_by && <p className="text-xs text-gray-300 mt-1">{item.created_by}</p>}
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
