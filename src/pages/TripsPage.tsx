@@ -12,14 +12,14 @@ interface Trip {
   created_at: string
 }
 
-export default function TripsPage({ session }: { session: Session }) {
+export default function TripsPage({ session, nickname }: { session: Session; nickname: string }) {
   const navigate = useNavigate()
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', destination: '', start_date: '', end_date: '' })
 
-  const userName = session.user.email?.split('@')[0] ?? '사용자'
+  const userName = nickname
 
   useEffect(() => {
     fetchTrips()

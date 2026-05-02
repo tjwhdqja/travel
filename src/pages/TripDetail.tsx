@@ -27,8 +27,10 @@ export default function TripDetail() {
     supabase.from('trips').select('*').eq('id', id).single().then(({ data }) => {
       setTrip(data)
     })
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUserName(user?.email?.split('@')[0] ?? '사용자')
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single()
+      setUserName(profile?.nickname ?? user.email?.split('@')[0] ?? '사용자')
     })
   }, [id])
 
