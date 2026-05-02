@@ -26,8 +26,8 @@ export default function ExpenseTab({ tripId, userName }: Props) {
   const [form, setForm] = useState({ title: '', amount: '', paid_by: userName, split_with: [] as string[] })
 
   useEffect(() => {
-    fetchAll()
-  }, [tripId])
+    if (userName) fetchAll()
+  }, [tripId, userName])
 
   async function fetchAll() {
     const [{ data: exp }, { data: mem }] = await Promise.all([

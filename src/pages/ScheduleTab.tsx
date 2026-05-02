@@ -146,8 +146,8 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
   useEffect(() => {
-    fetchAll()
-  }, [tripId])
+    if (userName) fetchAll()
+  }, [tripId, userName])
 
   async function fetchAll() {
     const [{ data: scheduleData }, { data: memberData }] = await Promise.all([
