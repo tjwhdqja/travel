@@ -16,7 +16,7 @@ interface Trip {
 type FormState = { name: string; destination: string; start_date: string; end_date: string; budget: string }
 
 const DESTINATIONS = [
-  { region: '🇯🇵 일본', places: ['오사카', '도쿄', '교토', '후쿠오카', '삿포로', '오키나와', '나고야', '나라'] },
+  { region: '🇯🇵 일본', places: ['오사카', '도쿄', '교토', '후쿠오카', '삿포로', '오키나와', '나고야', '나라', '미야코지마'] },
   { region: '🌏 동남아', places: ['방콕', '발리', '다낭', '세부', '싱가포르', '푸켓', '하노이', '호치민', '쿠알라룸푸르', '치앙마이'] },
   { region: '🇨🇳 중화권', places: ['홍콩', '마카오', '상하이', '베이징', '타이베이'] },
   { region: '🌍 유럽·중동', places: ['파리', '로마', '바르셀로나', '런던', '프라하', '암스테르담', '두바이', '이스탄불'] },
