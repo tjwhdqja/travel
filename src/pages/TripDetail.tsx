@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import ScheduleTab from './ScheduleTab'
@@ -33,31 +33,6 @@ const AVATAR_COLORS = [
   'bg-amber-400', 'bg-violet-400', 'bg-sky-400',
 ]
 
-function ShareButton({ tripId }: { tripId: string }) {
-  const [copied, setCopied] = useState(false)
-
-  function share() {
-    const url = `${window.location.origin}/trip/${tripId}`
-    if (navigator.share) {
-      navigator.share({ title: '여행에 초대합니다', url })
-    } else {
-      navigator.clipboard.writeText(url).then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      })
-    }
-  }
-
-  return (
-    <button
-      onClick={share}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-medium hover:bg-indigo-100 transition"
-    >
-      {copied ? '✅ 복사됨' : '🔗 초대 링크 공유'}
-    </button>
-  )
-}
-
 export default function TripDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -66,9 +41,6 @@ export default function TripDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('일정')
   const [userName, setUserName] = useState('')
   const [members, setMembers] = useState<string[]>([])
-  const [allProfiles, setAllProfiles] = useState<string[]>([])
-  const [showAddMember, setShowAddMember] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     supabase.from('trips').select('*').eq('id', id).single().then(({ data, error }) => {
@@ -77,9 +49,6 @@ export default function TripDetail() {
     })
     supabase.from('trip_members').select('name').eq('trip_id', id).then(({ data }) => {
       setMembers(data?.map(m => m.name) ?? [])
-    })
-    supabase.from('profiles').select('nickname').then(({ data }) => {
-      setAllProfiles(data?.map(p => p.nickname).filter(Boolean) ?? [])
     })
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
@@ -94,29 +63,6 @@ export default function TripDetail() {
     })
   }, [id])
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowAddMember(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  async function addMember(name: string) {
-    if (!name || members.includes(name)) return
-    await supabase.from('trip_members').insert([{ trip_id: id, name }])
-    setMembers(prev => [...prev, name])
-    setShowAddMember(false)
-  }
-
-  async function removeMember(name: string) {
-    if (name === userName) return
-    await supabase.from('trip_members').delete().eq('trip_id', id).eq('name', name)
-    setMembers(prev => prev.filter(m => m !== name))
-  }
-
   if (notFound) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-3">
       <p className="text-gray-400">여행을 찾을 수 없어요</p>
@@ -130,59 +76,22 @@ export default function TripDetail() {
     </div>
   )
 
-  const addableProfiles = allProfiles.filter(p => !members.includes(p))
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 px-4 pt-4 pb-3">
-        <div className="flex items-center justify-between mb-2">
-          <button onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 뒤로</button>
-          <ShareButton tripId={trip.id} />
-        </div>
+        <button onClick={() => navigate('/')} className="text-indigo-500 text-sm mb-2">← 뒤로</button>
         <h1 className="text-xl font-bold text-gray-800">{trip.name}</h1>
         <p className="text-sm text-gray-400 mb-3">📍 {trip.destination}</p>
 
         <div className="flex items-center gap-2 flex-wrap">
           {members.map((m, i) => (
-            <button
-              key={m}
-              onClick={() => removeMember(m)}
-              title={m === userName ? '나' : `${m} 제거`}
-              className="flex items-center gap-1.5 group"
-            >
+            <div key={m} className="flex items-center gap-1.5">
               <div className={`w-7 h-7 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-xs font-bold`}>
                 {getInitial(m)}
               </div>
-              <span className="text-xs text-gray-500 group-hover:text-red-400 transition-colors">
-                {m}
-              </span>
-            </button>
+              <span className="text-xs text-gray-500">{m}</span>
+            </div>
           ))}
-
-          <div ref={dropdownRef} className="relative">
-            <button
-              onClick={() => setShowAddMember(v => !v)}
-              className="w-7 h-7 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors"
-            >
-              +
-            </button>
-            {showAddMember && (
-              <div className="absolute left-0 top-9 z-20 bg-white rounded-xl shadow-lg border border-gray-100 min-w-[140px] overflow-hidden">
-                {addableProfiles.length === 0 ? (
-                  <p className="px-4 py-3 text-xs text-gray-400">추가할 멤버 없음</p>
-                ) : (
-                  addableProfiles.map(p => (
-                    <button key={p} type="button"
-                      onClick={() => addMember(p)}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                    >
-                      {p}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
         </div>
       </header>
 
