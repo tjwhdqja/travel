@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
@@ -137,8 +137,20 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingNickname, setEditingNickname] = useState(false)
   const [nicknameInput, setNicknameInput] = useState(nickname)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { fetchTrips() }, [])
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   async function saveNickname() {
     const trimmed = nicknameInput.trim()
@@ -236,31 +248,57 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">✈️ 우리들의 여행</h1>
-          {editingNickname ? (
-            <div className="flex items-center gap-1 mt-0.5">
-              <input
-                value={nicknameInput}
-                onChange={e => setNicknameInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setEditingNickname(false) }}
-                autoFocus
-                className="text-xs border border-indigo-300 rounded-lg px-2 py-0.5 w-28 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              />
-              <button onClick={saveNickname} className="text-xs text-indigo-500 font-medium">저장</button>
-              <button onClick={() => setEditingNickname(false)} className="text-xs text-gray-400">취소</button>
+        <h1 className="text-xl font-bold text-gray-800">✈️ 우리들의 여행</h1>
+        <div ref={userMenuRef} className="relative">
+          <button
+            onClick={() => setShowUserMenu(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-gray-50 transition"
+          >
+            <div className="w-7 h-7 rounded-full bg-indigo-400 flex items-center justify-center text-white text-xs font-bold">
+              {nickname.slice(0, 1)}
             </div>
-          ) : (
-            <button onClick={() => { setNicknameInput(nickname); setEditingNickname(true) }}
-              className="text-xs text-gray-400 hover:text-indigo-500 text-left">
-              {nickname}님 안녕하세요 ✏️
-            </button>
+            <span className="text-sm text-gray-700 font-medium">{nickname}</span>
+            <span className="text-gray-300 text-xs">{showUserMenu ? '▲' : '▼'}</span>
+          </button>
+
+          {showUserMenu && (
+            <div className="absolute right-0 top-11 z-20 bg-white rounded-xl shadow-lg border border-gray-100 w-36 overflow-hidden">
+              <button
+                onClick={() => { setNicknameInput(nickname); setEditingNickname(true); setShowUserMenu(false) }}
+                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
+              >
+                ✏️ 닉네임 수정
+              </button>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-50 transition"
+              >
+                로그아웃
+              </button>
+            </div>
           )}
         </div>
-        <button onClick={() => supabase.auth.signOut()} className="text-sm text-gray-400 hover:text-gray-600">
-          로그아웃
-        </button>
       </header>
+
+      {editingNickname && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => setEditingNickname(false)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-72 mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-800 mb-4">닉네임 수정</h3>
+            <input
+              value={nicknameInput}
+              onChange={e => setNicknameInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setEditingNickname(false) }}
+              autoFocus
+              placeholder="새 닉네임"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm mb-3"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setEditingNickname(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">취소</button>
+              <button onClick={saveNickname} className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold">저장</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-lg mx-auto p-4 space-y-4">
         <button
