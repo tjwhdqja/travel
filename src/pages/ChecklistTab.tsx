@@ -98,8 +98,6 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   const checkedCount = items.filter(i => i.checked).length
   const remaining = items.filter(i => !i.checked)
   const checked = items.filter(i => i.checked)
-  const addablePresets = PRESETS.filter(p => !items.some(i => i.text === p))
-
   return (
     <div className="space-y-4">
       <form onSubmit={e => { e.preventDefault(); addItem(newText) }} className="flex gap-2">
