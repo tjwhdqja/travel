@@ -6,12 +6,9 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Loader } from '@googlemaps/js-api-loader'
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 
-const mapsLoader = new Loader({
-  apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string,
-  libraries: ['places'],
-})
+setOptions({ key: import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string })
 
 interface Schedule {
   id: string
@@ -65,9 +62,9 @@ function LocationInput({ value, onChange }: { value: string; onChange: (v: strin
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    mapsLoader.importLibrary('places').then(places => {
+    importLibrary('places').then(places => {
       if (!inputRef.current) return
-      const ac = new (places as google.maps.PlacesLibrary).Autocomplete(inputRef.current, { fields: ['name'] })
+      const ac = new places.Autocomplete(inputRef.current, { fields: ['name'] })
       ac.addListener('place_changed', () => {
         const place = ac.getPlace()
         onChange(place.name ?? inputRef.current?.value ?? '')
