@@ -8,7 +8,38 @@ interface CheckItem {
   created_by: string | null
 }
 
-const PRESETS = ['여권', '항공권 출력', '숙소 예약 확인', '환전', '여행자 보험', '충전기', '상비약', '세면도구', '카메라', '수영복']
+const PRESET_GROUPS = [
+  {
+    label: '📋 서류·예약',
+    items: ['여권', '비자', '항공권 출력', '숙소 예약 확인', '여행자 보험', '국제운전면허증', 'ESTA/ETA 신청', '여행 일정표 출력'],
+  },
+  {
+    label: '💴 금융',
+    items: ['환전', '해외 결제 카드', '트래블월렛/트래블로그', '비상금', '카드 해외 결제 신청'],
+  },
+  {
+    label: '👕 의류·가방',
+    items: ['의류 (일수만큼)', '속옷·양말', '잠옷', '수영복', '운동화', '샌들', '모자', '선글라스', '우산·우비', '가방 자물쇠'],
+  },
+  {
+    label: '🔌 전자기기',
+    items: ['스마트폰 충전기', '보조배터리', '카메라', '카메라 충전기', '멀티 어댑터', '이어폰', '노트북'],
+  },
+  {
+    label: '🧴 세면·위생',
+    items: ['세면도구', '샴푸·컨디셔너', '칫솔·치약', '선크림', '수건', '화장품', '면도기', '생리대'],
+  },
+  {
+    label: '💊 의약품',
+    items: ['상비약', '소화제', '진통제', '지사제', '멀미약', '모기 기피제', '밴드·파스'],
+  },
+  {
+    label: '🎒 기타',
+    items: ['여행용 목베개', '수면 안대·귀마개', '비닐백', '짐표', '간식', '물통'],
+  },
+]
+
+const PRESETS = PRESET_GROUPS.flatMap(g => g.items)
 
 interface Props {
   tripId: string
@@ -88,19 +119,25 @@ export default function ChecklistTab({ tripId, userName }: Props) {
         {showPresets ? '▲ 추천 준비물 닫기' : '✨ 추천 준비물 보기'}
       </button>
 
-      {showPresets && addablePresets.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm p-4">
-          <div className="flex flex-wrap gap-2">
-            {addablePresets.map(p => (
-              <button
-                key={p}
-                onClick={() => addItem(p)}
-                className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-sm rounded-full hover:bg-indigo-100 transition"
-              >
-                + {p}
-              </button>
-            ))}
-          </div>
+      {showPresets && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+          {PRESET_GROUPS.map(group => {
+            const available = group.items.filter(p => !items.some(i => i.text === p))
+            if (available.length === 0) return null
+            return (
+              <div key={group.label}>
+                <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {available.map(p => (
+                    <button key={p} onClick={() => addItem(p)}
+                      className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
+                      + {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
