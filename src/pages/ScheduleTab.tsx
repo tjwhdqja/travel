@@ -1,10 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Loader } from '@googlemaps/js-api-loader'
+
+const mapsLoader = new Loader({
+  apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string,
+  libraries: ['places'],
+})
 
 interface Schedule {
   id: string
@@ -54,6 +60,31 @@ interface FormProps {
   onCancel: () => void
 }
 
+function LocationInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    mapsLoader.load().then(google => {
+      if (!inputRef.current) return
+      const ac = new google.maps.places.Autocomplete(inputRef.current, { fields: ['name'] })
+      ac.addListener('place_changed', () => {
+        const place = ac.getPlace()
+        onChange(place.name ?? inputRef.current?.value ?? '')
+      })
+    })
+  }, [])
+
+  return (
+    <input
+      ref={inputRef}
+      defaultValue={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder="장소 검색"
+      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+    />
+  )
+}
+
 function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
   function toggleParticipant(name: string) {
     const next = form.participants.includes(name)
@@ -95,10 +126,7 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
         onChange={e => setForm({ ...form, title: e.target.value })} required
         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
       />
-      <input placeholder="장소 (선택)" value={form.location}
-        onChange={e => setForm({ ...form, location: e.target.value })}
-        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-      />
+      <LocationInput value={form.location} onChange={v => setForm({ ...form, location: v })} />
       <textarea placeholder="메모 (선택)" value={form.note}
         onChange={e => setForm({ ...form, note: e.target.value })} rows={2}
         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm resize-none"
@@ -176,7 +204,13 @@ function SortableScheduleItem({ item, editingId, form, setForm, members, startDa
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-gray-800 text-sm">{item.title}</p>
-        {item.location && <p className="text-xs text-gray-400 mt-0.5">📍 {item.location}</p>}
+        {item.location && (
+          <a href={`https://maps.google.com/?q=${encodeURIComponent(item.location)}`} target="_blank" rel="noopener noreferrer"
+            className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 hover:text-indigo-400 transition-colors"
+          >
+            📍 {item.location}
+          </a>
+        )}
         {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
         {item.participants?.length > 0 && (
           <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
