@@ -180,6 +180,22 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     if (userName) fetchAll()
   }, [tripId, userName])
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`schedules:${tripId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'schedules', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        setSchedules(prev => prev.some(s => s.id === row.id) ? prev : sorted([...prev, row as Schedule]))
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'schedules', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        setSchedules(prev => sorted(prev.map(s => s.id === row.id ? row as Schedule : s)))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'schedules', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
+        setSchedules(prev => prev.filter(s => s.id !== row.id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId])
+
   async function fetchAll() {
     const [{ data: scheduleData }, { data: memberData }] = await Promise.all([
       supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('time'),

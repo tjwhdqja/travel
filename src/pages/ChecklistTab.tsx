@@ -23,6 +23,22 @@ export default function ChecklistTab({ tripId, userName }: Props) {
 
   useEffect(() => { fetchItems() }, [tripId])
 
+  useEffect(() => {
+    const channel = supabase
+      .channel(`checklists:${tripId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        setItems(prev => prev.some(i => i.id === row.id) ? prev : [...prev, row as CheckItem])
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        setItems(prev => prev.map(i => i.id === row.id ? row as CheckItem : i))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
+        setItems(prev => prev.filter(i => i.id !== row.id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId])
+
   async function fetchItems() {
     const { data } = await supabase.from('checklists').select('*').eq('trip_id', tripId).order('created_at')
     setItems(data ?? [])

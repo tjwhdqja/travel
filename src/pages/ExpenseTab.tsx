@@ -62,6 +62,19 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
   }, [tripId, userName])
 
   useEffect(() => {
+    const channel = supabase
+      .channel(`expenses:${tripId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'expenses', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        setExpenses(prev => prev.some(e => e.id === row.id) ? prev : [row as Expense, ...prev])
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'expenses', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
+        setExpenses(prev => prev.filter(e => e.id !== row.id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId])
+
+  useEffect(() => {
     fetch('https://api.frankfurter.app/latest?base=KRW&symbols=JPY,USD,EUR,CNY,THB')
       .then(r => r.json())
       .then(data => setRates(data.rates ?? {}))

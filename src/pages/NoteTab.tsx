@@ -15,7 +15,16 @@ export default function NoteTab({ tripId }: Props) {
     supabase.from('notes').select('content').eq('trip_id', tripId).maybeSingle().then(({ data }) => {
       if (data) setContent(data.content ?? '')
     })
-    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+    const channel = supabase
+      .channel(`notes:${tripId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        if (!saving) setContent((row as { content: string }).content ?? '')
+      })
+      .subscribe()
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      supabase.removeChannel(channel)
+    }
   }, [tripId])
 
   function handleChange(val: string) {
