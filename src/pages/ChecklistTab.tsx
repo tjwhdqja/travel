@@ -36,7 +36,6 @@ export default function ChecklistTab({ tripId, userName }: Props) {
       .select().single()
     if (data) setItems(prev => [...prev, data])
     setNewText('')
-    setShowPresets(false)
   }
 
   async function toggleItem(item: CheckItem) {
