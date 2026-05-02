@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import ScheduleTab from './ScheduleTab'
+import ExpenseTab from './ExpenseTab'
 
 interface Trip {
   id: string
@@ -75,7 +76,7 @@ export default function TripDetail() {
             endDate={trip.end_date}
           />
         )}
-        {activeTab === '경비' && <div className="text-center text-gray-400 py-16">경비 기능 준비 중</div>}
+        {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} />}
         {activeTab === '투표' && <div className="text-center text-gray-400 py-16">투표 기능 준비 중</div>}
         {activeTab === '사진' && <div className="text-center text-gray-400 py-16">사진 기능 준비 중</div>}
       </main>
