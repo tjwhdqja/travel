@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 interface Expense {
@@ -22,7 +22,19 @@ export default function ExpenseTab({ tripId, userName }: Props) {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
   const [form, setForm] = useState({ title: '', amount: '', paid_by: userName, split_with: [] as string[] })
 
   useEffect(() => {
@@ -148,16 +160,30 @@ export default function ExpenseTab({ tripId, userName }: Props) {
             ))}
           </div>
           {allProfiles.filter(p => !members.includes(p)).length > 0 && (
-            <select
-              defaultValue=""
-              onChange={e => { if (e.target.value) addMember(e.target.value); e.target.value = '' }}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm text-gray-600"
-            >
-              <option value="" disabled>멤버 추가하기</option>
-              {allProfiles.filter(p => !members.includes(p)).map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+            <div ref={dropdownRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowDropdown(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition"
+              >
+                <span>멤버 추가하기</span>
+                <span className="text-gray-400">{showDropdown ? '▲' : '▼'}</span>
+              </button>
+              {showDropdown && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                  {allProfiles.filter(p => !members.includes(p)).map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => { addMember(p); setShowDropdown(false) }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
