@@ -30,7 +30,18 @@ export default function TripDetail() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single()
-      setUserName(profile?.nickname ?? user.email?.split('@')[0] ?? '사용자')
+      const name = profile?.nickname ?? user.email?.split('@')[0] ?? '사용자'
+      setUserName(name)
+
+      const { data: existing } = await supabase
+        .from('trip_members')
+        .select('id')
+        .eq('trip_id', id)
+        .eq('name', name)
+        .single()
+      if (!existing) {
+        await supabase.from('trip_members').insert([{ trip_id: id, name }])
+      }
     })
   }, [id])
 
