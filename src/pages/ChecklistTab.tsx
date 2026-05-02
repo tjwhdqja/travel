@@ -39,7 +39,6 @@ const PRESET_GROUPS = [
   },
 ]
 
-const PRESETS = PRESET_GROUPS.flatMap(g => g.items)
 
 interface Props {
   tripId: string
