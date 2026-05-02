@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
 import VoteTab from './VoteTab'
+import PhotoTab from './PhotoTab'
 
 interface Trip {
   id: string
@@ -79,7 +80,7 @@ export default function TripDetail() {
         )}
         {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} />}
         {activeTab === '투표' && <VoteTab tripId={trip.id} userName={userName} />}
-        {activeTab === '사진' && <div className="text-center text-gray-400 py-16">사진 기능 준비 중</div>}
+        {activeTab === '사진' && <PhotoTab tripId={trip.id} userName={userName} />}
       </main>
     </div>
   )
