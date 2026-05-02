@@ -7,6 +7,8 @@ interface Expense {
   amount: number
   paid_by: string
   split_with: string[]
+  category: string
+  currency: string
   created_at: string
 }
 
@@ -16,16 +18,33 @@ interface Props {
   budget?: number
 }
 
+const CATEGORIES = [
+  { id: '식비', emoji: '🍽' },
+  { id: '교통', emoji: '🚌' },
+  { id: '숙박', emoji: '🏨' },
+  { id: '관광', emoji: '🎡' },
+  { id: '쇼핑', emoji: '🛍' },
+  { id: '기타', emoji: '💳' },
+]
+
+const CURRENCIES = ['KRW', 'JPY', 'USD', 'EUR', 'CNY', 'THB']
+
 export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [members, setMembers] = useState<string[]>([])
   const [allProfiles, setAllProfiles] = useState<string[]>([])
+  const [rates, setRates] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const [form, setForm] = useState({
+    title: '', amount: '', paid_by: userName,
+    split_with: [] as string[], category: '식비', currency: 'KRW'
+  })
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -36,11 +55,22 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
-  const [form, setForm] = useState({ title: '', amount: '', paid_by: userName, split_with: [] as string[] })
 
   useEffect(() => {
     if (userName) fetchAll()
   }, [tripId, userName])
+
+  useEffect(() => {
+    fetch('https://api.frankfurter.app/latest?base=KRW&symbols=JPY,USD,EUR,CNY,THB')
+      .then(r => r.json())
+      .then(data => setRates(data.rates ?? {}))
+      .catch(() => {})
+  }, [])
+
+  function toKRW(amount: number, currency: string): number {
+    if (currency === 'KRW' || !rates[currency]) return amount
+    return Math.round(amount / rates[currency])
+  }
 
   async function fetchAll() {
     const [{ data: exp }, { data: mem }, { data: profiles }] = await Promise.all([
@@ -74,12 +104,16 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
     if (form.split_with.length === 0) return alert('정산할 사람을 선택해주세요')
     const { data } = await supabase
       .from('expenses')
-      .insert([{ trip_id: tripId, title: form.title, amount: Number(form.amount), paid_by: form.paid_by, split_with: form.split_with }])
+      .insert([{
+        trip_id: tripId, title: form.title, amount: Number(form.amount),
+        paid_by: form.paid_by, split_with: form.split_with,
+        category: form.category, currency: form.currency
+      }])
       .select().single()
     if (data) {
       setExpenses(prev => [data, ...prev])
       setShowForm(false)
-      setForm({ title: '', amount: '', paid_by: userName, split_with: members })
+      setForm({ title: '', amount: '', paid_by: userName, split_with: members, category: '식비', currency: 'KRW' })
     }
   }
 
@@ -100,22 +134,19 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
   function calcSettlement() {
     const balance: Record<string, number> = {}
     members.forEach(m => (balance[m] = 0))
-
     expenses.forEach(exp => {
-      const share = exp.amount / exp.split_with.length
-      if (balance[exp.paid_by] !== undefined) balance[exp.paid_by] += exp.amount
+      const krw = toKRW(exp.amount, exp.currency)
+      const share = krw / exp.split_with.length
+      if (balance[exp.paid_by] !== undefined) balance[exp.paid_by] += krw
       exp.split_with.forEach(person => {
         if (balance[person] !== undefined) balance[person] -= share
       })
     })
-
     const creditors = Object.entries(balance).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
     const debtors = Object.entries(balance).filter(([, v]) => v < 0).sort((a, b) => a[1] - b[1])
-
     const result: { from: string; to: string; amount: number }[] = []
     const c = creditors.map(([name, amt]) => ({ name, amt }))
     const d = debtors.map(([name, amt]) => ({ name, amt: -amt }))
-
     let i = 0, j = 0
     while (i < c.length && j < d.length) {
       const transfer = Math.min(c[i].amt, d[j].amt)
@@ -128,10 +159,14 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
     return result
   }
 
-  const totalAmount = expenses.reduce((sum, e) => sum + e.amount, 0)
+  const totalKRW = expenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
   const settlements = calcSettlement()
-  const remaining = budget > 0 ? budget - totalAmount : null
-  const budgetPct = budget > 0 ? Math.min((totalAmount / budget) * 100, 100) : 0
+  const remaining = budget > 0 ? budget - totalKRW : null
+  const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
+
+  function getCategoryEmoji(cat: string) {
+    return CATEGORIES.find(c => c.id === cat)?.emoji ?? '💳'
+  }
 
   return (
     <div className="space-y-4">
@@ -140,7 +175,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">예산 사용</span>
             <span className={remaining! < 0 ? 'text-red-500 font-bold' : 'text-gray-700 font-medium'}>
-              {totalAmount.toLocaleString()}원 / {budget.toLocaleString()}원
+              {totalKRW.toLocaleString()}원 / {budget.toLocaleString()}원
             </span>
           </div>
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -154,7 +189,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
 
       <div className="flex gap-2">
         <button
-          onClick={() => { setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: members }) }}
+          onClick={() => { setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: members, category: '식비', currency: 'KRW' }) }}
           className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition text-sm"
         >
           + 지출 추가
@@ -194,9 +229,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
                   <p className="px-4 py-3 text-sm text-gray-400">추가할 수 있는 멤버가 없어요</p>
                 ) : (
                   allProfiles.filter(p => !members.includes(p)).map(p => (
-                    <button
-                      key={p}
-                      type="button"
+                    <button key={p} type="button"
                       onClick={() => { addMember(p); setShowDropdown(false) }}
                       className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
                     >
@@ -214,6 +247,20 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
         <div className="bg-white rounded-2xl shadow-sm p-5">
           <h3 className="font-bold text-gray-800 mb-4">지출 추가</h3>
           <form onSubmit={addExpense} className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map(cat => (
+                  <button key={cat.id} type="button"
+                    onClick={() => setForm({ ...form, category: cat.id })}
+                    className={`px-3 py-1.5 rounded-full text-sm transition ${form.category === cat.id ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    {cat.emoji} {cat.id}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <input
               placeholder="내용 (예: 저녁 식사)"
               value={form.title}
@@ -221,21 +268,42 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
               required
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
             />
-            <input
-              type="number"
-              placeholder="금액 (원)"
-              value={form.amount}
-              onChange={e => setForm({ ...form, amount: e.target.value })}
-              required
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-            />
+
+            <div>
+              <label className="text-xs text-gray-500 mb-2 block">통화</label>
+              <div className="flex gap-1.5 flex-wrap">
+                {CURRENCIES.map(cur => (
+                  <button key={cur} type="button"
+                    onClick={() => setForm({ ...form, currency: cur })}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${form.currency === cur ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    {cur}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <input
+                type="number"
+                placeholder="금액"
+                value={form.amount}
+                onChange={e => setForm({ ...form, amount: e.target.value })}
+                required
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              />
+              {form.currency !== 'KRW' && form.amount && rates[form.currency] && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  ≈ {toKRW(Number(form.amount), form.currency).toLocaleString()}원
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="text-xs text-gray-500 mb-2 block">결제한 사람</label>
               <div className="flex flex-wrap gap-2">
                 {members.map(m => (
-                  <button
-                    key={m}
-                    type="button"
+                  <button key={m} type="button"
                     onClick={() => setForm({ ...form, paid_by: m })}
                     className={`px-3 py-1.5 rounded-full text-sm transition ${form.paid_by === m ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
                   >
@@ -244,13 +312,12 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
                 ))}
               </div>
             </div>
+
             <div>
               <label className="text-xs text-gray-500 mb-2 block">나눌 사람</label>
               <div className="flex flex-wrap gap-2">
                 {members.map(m => (
-                  <button
-                    key={m}
-                    type="button"
+                  <button key={m} type="button"
                     onClick={() => toggleSplit(m)}
                     className={`px-3 py-1.5 rounded-full text-sm transition ${form.split_with.includes(m) ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}
                   >
@@ -260,10 +327,11 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
               </div>
               {form.split_with.length > 0 && form.amount && (
                 <p className="text-xs text-gray-400 mt-1.5">
-                  1인당 {Math.round(Number(form.amount) / form.split_with.length).toLocaleString()}원
+                  1인당 {Math.round(toKRW(Number(form.amount), form.currency) / form.split_with.length).toLocaleString()}원
                 </p>
               )}
             </div>
+
             <div className="flex gap-2">
               <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">취소</button>
               <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold">추가</button>
@@ -290,17 +358,25 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
             <>
               <div className="bg-indigo-50 rounded-xl px-4 py-3 flex justify-between items-center">
                 <span className="text-sm text-indigo-600">총 지출</span>
-                <span className="font-bold text-indigo-600">{totalAmount.toLocaleString()}원</span>
+                <span className="font-bold text-indigo-600">{totalKRW.toLocaleString()}원</span>
               </div>
               {expenses.map(exp => (
                 <div key={exp.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3">
-                  <div className="flex-1">
+                  <span className="text-2xl">{getCategoryEmoji(exp.category)}</span>
+                  <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담</p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-gray-800 text-sm">{exp.amount.toLocaleString()}원</p>
-                    <p className="text-xs text-gray-400">1인 {Math.round(exp.amount / exp.split_with.length).toLocaleString()}원</p>
+                  <div className="text-right shrink-0">
+                    <p className="font-semibold text-gray-800 text-sm">
+                      {exp.amount.toLocaleString()} {exp.currency}
+                    </p>
+                    {exp.currency !== 'KRW' && (
+                      <p className="text-xs text-gray-400">≈ {toKRW(exp.amount, exp.currency).toLocaleString()}원</p>
+                    )}
+                    <p className="text-xs text-gray-400">
+                      1인 {Math.round(toKRW(exp.amount, exp.currency) / exp.split_with.length).toLocaleString()}원
+                    </p>
                   </div>
                   <button onClick={() => deleteExpense(exp.id)} className="text-gray-300 hover:text-red-400 text-xs ml-1">삭제</button>
                 </div>
