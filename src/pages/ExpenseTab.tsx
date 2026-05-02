@@ -18,10 +18,10 @@ interface Props {
 export default function ExpenseTab({ tripId, userName }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [members, setMembers] = useState<string[]>([])
+  const [allProfiles, setAllProfiles] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
-  const [newMember, setNewMember] = useState('')
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
   const [form, setForm] = useState({ title: '', amount: '', paid_by: userName, split_with: [] as string[] })
 
@@ -30,25 +30,25 @@ export default function ExpenseTab({ tripId, userName }: Props) {
   }, [tripId, userName])
 
   async function fetchAll() {
-    const [{ data: exp }, { data: mem }] = await Promise.all([
+    const [{ data: exp }, { data: mem }, { data: profiles }] = await Promise.all([
       supabase.from('expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false }),
-      supabase.from('trip_members').select('name').eq('trip_id', tripId)
+      supabase.from('trip_members').select('name').eq('trip_id', tripId),
+      supabase.from('profiles').select('nickname')
     ])
     setExpenses(exp ?? [])
     const names = mem?.map(m => m.name) ?? []
     setMembers(names)
+    setAllProfiles(profiles?.map(p => p.nickname) ?? [])
     if (names.length > 0 && form.split_with.length === 0) {
       setForm(f => ({ ...f, split_with: names }))
     }
     setLoading(false)
   }
 
-  async function addMember(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newMember.trim() || members.includes(newMember.trim())) return
-    await supabase.from('trip_members').insert([{ trip_id: tripId, name: newMember.trim() }])
-    setMembers(prev => [...prev, newMember.trim()])
-    setNewMember('')
+  async function addMember(nickname: string) {
+    if (!nickname || members.includes(nickname)) return
+    await supabase.from('trip_members').insert([{ trip_id: tripId, name: nickname }])
+    setMembers(prev => [...prev, nickname])
   }
 
   async function removeMember(name: string) {
@@ -147,15 +147,18 @@ export default function ExpenseTab({ tripId, userName }: Props) {
               </span>
             ))}
           </div>
-          <form onSubmit={addMember} className="flex gap-2">
-            <input
-              placeholder="이름 입력"
-              value={newMember}
-              onChange={e => setNewMember(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-            />
-            <button type="submit" className="px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-semibold">추가</button>
-          </form>
+          {allProfiles.filter(p => !members.includes(p)).length > 0 && (
+            <select
+              defaultValue=""
+              onChange={e => { if (e.target.value) addMember(e.target.value); e.target.value = '' }}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm text-gray-600"
+            >
+              <option value="" disabled>멤버 추가하기</option>
+              {allProfiles.filter(p => !members.includes(p)).map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
