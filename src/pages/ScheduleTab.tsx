@@ -237,8 +237,8 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
                         <button onClick={() => startEdit(item)} className="text-gray-300 hover:text-indigo-400 text-xs transition">
                           수정
                         </button>
-                        <button onClick={() => deleteSchedule(item.id)} className="text-gray-300 hover:text-red-400 text-sm transition">
-                          ✕
+                        <button onClick={() => deleteSchedule(item.id)} className="text-gray-300 hover:text-red-400 text-xs transition">
+                          삭제
                         </button>
                       </div>
                     </div>
