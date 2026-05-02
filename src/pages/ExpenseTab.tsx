@@ -13,9 +13,10 @@ interface Expense {
 interface Props {
   tripId: string
   userName: string
+  budget?: number
 }
 
-export default function ExpenseTab({ tripId, userName }: Props) {
+export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [members, setMembers] = useState<string[]>([])
   const [allProfiles, setAllProfiles] = useState<string[]>([])
@@ -129,9 +130,28 @@ export default function ExpenseTab({ tripId, userName }: Props) {
 
   const totalAmount = expenses.reduce((sum, e) => sum + e.amount, 0)
   const settlements = calcSettlement()
+  const remaining = budget > 0 ? budget - totalAmount : null
+  const budgetPct = budget > 0 ? Math.min((totalAmount / budget) * 100, 100) : 0
 
   return (
     <div className="space-y-4">
+      {budget > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">예산 사용</span>
+            <span className={remaining! < 0 ? 'text-red-500 font-bold' : 'text-gray-700 font-medium'}>
+              {totalAmount.toLocaleString()}원 / {budget.toLocaleString()}원
+            </span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all ${budgetPct >= 100 ? 'bg-red-400' : budgetPct >= 80 ? 'bg-yellow-400' : 'bg-indigo-400'}`} style={{ width: `${budgetPct}%` }} />
+          </div>
+          <p className={`text-xs ${remaining! < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+            {remaining! < 0 ? `${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
+          </p>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button
           onClick={() => { setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: members }) }}

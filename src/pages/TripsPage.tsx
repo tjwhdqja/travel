@@ -8,6 +8,7 @@ interface Trip {
   destination: string
   start_date: string
   end_date: string
+  budget: number
   created_at: string
 }
 
@@ -16,13 +17,9 @@ export default function TripsPage({ nickname }: { nickname: string }) {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', destination: '', start_date: '', end_date: '' })
+  const [form, setForm] = useState({ name: '', destination: '', start_date: '', end_date: '', budget: '' })
 
-  const userName = nickname
-
-  useEffect(() => {
-    fetchTrips()
-  }, [])
+  useEffect(() => { fetchTrips() }, [])
 
   async function fetchTrips() {
     const { data } = await supabase.from('trips').select('*').order('created_at', { ascending: false })
@@ -32,16 +29,39 @@ export default function TripsPage({ nickname }: { nickname: string }) {
 
   async function createTrip(e: React.FormEvent) {
     e.preventDefault()
-    const { data } = await supabase.from('trips').insert([form]).select().single()
+    const { data } = await supabase.from('trips').insert([{
+      name: form.name,
+      destination: form.destination,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      budget: Number(form.budget) || 0
+    }]).select().single()
     if (data) {
       setTrips([data, ...trips])
       setShowForm(false)
-      setForm({ name: '', destination: '', start_date: '', end_date: '' })
+      setForm({ name: '', destination: '', start_date: '', end_date: '', budget: '' })
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
+  function getStatus(trip: Trip): { label: string; color: string } {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const start = new Date(trip.start_date)
+    const end = new Date(trip.end_date)
+    if (today < start) return { label: '예정', color: 'bg-blue-100 text-blue-600' }
+    if (today > end) return { label: '완료', color: 'bg-gray-100 text-gray-500' }
+    return { label: '여행중', color: 'bg-green-100 text-green-600' }
+  }
+
+  function getDday(trip: Trip): string {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const start = new Date(trip.start_date)
+    const end = new Date(trip.end_date)
+    if (today > end) return '완료'
+    if (today >= start) return 'D-day'
+    const diff = Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    return `D-${diff}`
   }
 
   function formatDate(date: string) {
@@ -53,9 +73,9 @@ export default function TripsPage({ nickname }: { nickname: string }) {
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">✈️ 우리들의 여행</h1>
-          <p className="text-xs text-gray-400">{userName}님 안녕하세요</p>
+          <p className="text-xs text-gray-400">{nickname}님 안녕하세요</p>
         </div>
-        <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-gray-600">
+        <button onClick={() => supabase.auth.signOut()} className="text-sm text-gray-400 hover:text-gray-600">
           로그아웃
         </button>
       </header>
@@ -89,39 +109,23 @@ export default function TripsPage({ nickname }: { nickname: string }) {
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="text-xs text-gray-500 mb-1 block">출발일</label>
-                  <input
-                    type="date"
-                    value={form.start_date}
-                    onChange={e => setForm({ ...form, start_date: e.target.value })}
-                    required
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-                  />
+                  <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
                 </div>
                 <div className="flex-1">
                   <label className="text-xs text-gray-500 mb-1 block">귀국일</label>
-                  <input
-                    type="date"
-                    value={form.end_date}
-                    onChange={e => setForm({ ...form, end_date: e.target.value })}
-                    required
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-                  />
+                  <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
                 </div>
               </div>
+              <input
+                type="number"
+                placeholder="총 예산 (원, 선택)"
+                value={form.budget}
+                onChange={e => setForm({ ...form, budget: e.target.value })}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              />
               <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600"
-                >
-                  만들기
-                </button>
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
+                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">만들기</button>
               </div>
             </form>
           </div>
@@ -136,24 +140,30 @@ export default function TripsPage({ nickname }: { nickname: string }) {
             <p className="text-sm mt-1">새 여행을 만들어보세요!</p>
           </div>
         ) : (
-          trips.map(trip => (
-            <div
-              key={trip.id}
-              onClick={() => navigate(`/trip/${trip.id}`)}
-              className="bg-white rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition"
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-gray-800">{trip.name}</h3>
-                  <p className="text-indigo-500 text-sm mt-0.5">📍 {trip.destination}</p>
+          trips.map(trip => {
+            const status = getStatus(trip)
+            const dday = getDday(trip)
+            return (
+              <div
+                key={trip.id}
+                onClick={() => navigate(`/trip/${trip.id}`)}
+                className="bg-white rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-gray-800">{trip.name}</h3>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
+                  </div>
+                  <span className="text-indigo-500 text-sm font-bold ml-2 shrink-0">{dday}</span>
                 </div>
-                <span className="text-gray-300 text-xl">›</span>
+                <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
+                <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}</p>
+                {trip.budget > 0 && (
+                  <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>
+                )}
               </div>
-              <p className="text-gray-400 text-xs mt-2">
-                {formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}
-              </p>
-            </div>
-          ))
+            )
+          })
         )}
       </main>
     </div>

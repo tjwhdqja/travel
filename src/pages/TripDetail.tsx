@@ -5,6 +5,8 @@ import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
 import VoteTab from './VoteTab'
 import PhotoTab from './PhotoTab'
+import ChecklistTab from './ChecklistTab'
+import NoteTab from './NoteTab'
 
 interface Trip {
   id: string
@@ -12,9 +14,19 @@ interface Trip {
   destination: string
   start_date: string
   end_date: string
+  budget: number
 }
 
-type Tab = '일정' | '경비' | '투표' | '사진'
+type Tab = '일정' | '경비' | '투표' | '사진' | '체크' | '메모'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: '일정', label: '🗓 일정' },
+  { id: '경비', label: '💰 경비' },
+  { id: '투표', label: '🗳 투표' },
+  { id: '사진', label: '📷 사진' },
+  { id: '체크', label: '✅ 체크' },
+  { id: '메모', label: '📝 메모' },
+]
 
 export default function TripDetail() {
   const { id } = useParams<{ id: string }>()
@@ -24,36 +36,22 @@ export default function TripDetail() {
   const [userName, setUserName] = useState('')
 
   useEffect(() => {
-    supabase.from('trips').select('*').eq('id', id).single().then(({ data }) => {
-      setTrip(data)
-    })
+    supabase.from('trips').select('*').eq('id', id).single().then(({ data }) => setTrip(data))
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single()
       const name = profile?.nickname ?? user.email?.split('@')[0] ?? '사용자'
       setUserName(name)
-
-      const { data: existing } = await supabase
-        .from('trip_members')
-        .select('id')
-        .eq('trip_id', id)
-        .eq('name', name)
-        .single()
-      if (!existing) {
-        await supabase.from('trip_members').insert([{ trip_id: id, name }])
-      }
+      const { data: existing } = await supabase.from('trip_members').select('id').eq('trip_id', id).eq('name', name).single()
+      if (!existing) await supabase.from('trip_members').insert([{ trip_id: id, name }])
     })
   }, [id])
 
-  if (!trip) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400">불러오는 중...</p>
-      </div>
-    )
-  }
-
-  const tabs: Tab[] = ['일정', '경비', '투표', '사진']
+  if (!trip) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-gray-400">불러오는 중...</p>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -63,37 +61,27 @@ export default function TripDetail() {
         <p className="text-sm text-gray-400">📍 {trip.destination}</p>
       </header>
 
-      <div className="flex border-b border-gray-100 bg-white">
-        {tabs.map(tab => (
+      <div className="flex border-b border-gray-100 bg-white overflow-x-auto">
+        {TABS.map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-3 text-sm font-medium transition ${
-              activeTab === tab
-                ? 'text-indigo-500 border-b-2 border-indigo-500'
-                : 'text-gray-400'
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-shrink-0 px-4 py-3 text-sm font-medium transition whitespace-nowrap ${
+              activeTab === tab.id ? 'text-indigo-500 border-b-2 border-indigo-500' : 'text-gray-400'
             }`}
           >
-            {tab === '일정' && '🗓 일정'}
-            {tab === '경비' && '💰 경비'}
-            {tab === '투표' && '🗳 투표'}
-            {tab === '사진' && '📷 사진'}
+            {tab.label}
           </button>
         ))}
       </div>
 
       <main className="max-w-lg mx-auto p-4">
-        {activeTab === '일정' && (
-          <ScheduleTab
-            tripId={trip.id}
-            userName={userName}
-            startDate={trip.start_date}
-            endDate={trip.end_date}
-          />
-        )}
-        {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} />}
+        {activeTab === '일정' && <ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} />}
+        {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} />}
         {activeTab === '투표' && <VoteTab tripId={trip.id} userName={userName} />}
         {activeTab === '사진' && <PhotoTab tripId={trip.id} userName={userName} />}
+        {activeTab === '체크' && <ChecklistTab tripId={trip.id} userName={userName} />}
+        {activeTab === '메모' && <NoteTab tripId={trip.id} />}
       </main>
     </div>
   )
