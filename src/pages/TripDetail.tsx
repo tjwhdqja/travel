@@ -33,6 +33,27 @@ const AVATAR_COLORS = [
   'bg-amber-400', 'bg-violet-400', 'bg-sky-400',
 ]
 
+function ShareButton({ tripId }: { tripId: string }) {
+  const [copied, setCopied] = useState(false)
+  function share() {
+    const url = `${window.location.origin}/trip/${tripId}`
+    if (navigator.share) {
+      navigator.share({ title: '여행에 초대합니다', url })
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+    }
+  }
+  return (
+    <button onClick={share}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-medium hover:bg-indigo-100 transition">
+      {copied ? '✅ 복사됨' : '🔗 초대 링크'}
+    </button>
+  )
+}
+
 export default function TripDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -79,7 +100,10 @@ export default function TripDetail() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 px-4 pt-4 pb-3">
-        <button onClick={() => navigate('/')} className="text-indigo-500 text-sm mb-2">← 뒤로</button>
+        <div className="flex items-center justify-between mb-2">
+          <button onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 뒤로</button>
+          <ShareButton tripId={trip.id} />
+        </div>
         <h1 className="text-xl font-bold text-gray-800">{trip.name}</h1>
         <p className="text-sm text-gray-400 mb-3">📍 {trip.destination}</p>
 
