@@ -3,8 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
-import VoteTab from './VoteTab'
-import PhotoTab from './PhotoTab'
 import ChecklistTab from './ChecklistTab'
 import NoteTab from './NoteTab'
 
@@ -17,13 +15,11 @@ interface Trip {
   budget: number
 }
 
-type Tab = '일정' | '경비' | '투표' | '사진' | '체크' | '메모'
+type Tab = '일정' | '경비' | '체크' | '메모'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: '일정', label: '🗓 일정' },
   { id: '경비', label: '💰 경비' },
-  { id: '투표', label: '🗳 투표' },
-  { id: '사진', label: '📷 사진' },
   { id: '체크', label: '✅ 체크' },
   { id: '메모', label: '📝 메모' },
 ]
@@ -61,12 +57,12 @@ export default function TripDetail() {
         <p className="text-sm text-gray-400">📍 {trip.destination}</p>
       </header>
 
-      <div className="flex border-b border-gray-100 bg-white overflow-x-auto">
+      <div className="flex border-b border-gray-100 bg-white">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-shrink-0 px-4 py-3 text-sm font-medium transition whitespace-nowrap ${
+            className={`flex-1 py-3 text-sm font-medium transition ${
               activeTab === tab.id ? 'text-indigo-500 border-b-2 border-indigo-500' : 'text-gray-400'
             }`}
           >
@@ -78,8 +74,6 @@ export default function TripDetail() {
       <main className="max-w-lg mx-auto p-4">
         {activeTab === '일정' && <ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} />}
         {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} />}
-        {activeTab === '투표' && <VoteTab tripId={trip.id} userName={userName} />}
-        {activeTab === '사진' && <PhotoTab tripId={trip.id} userName={userName} />}
         {activeTab === '체크' && <ChecklistTab tripId={trip.id} userName={userName} />}
         {activeTab === '메모' && <NoteTab tripId={trip.id} />}
       </main>
