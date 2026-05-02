@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
+import VoteTab from './VoteTab'
 
 interface Trip {
   id: string
@@ -77,7 +78,7 @@ export default function TripDetail() {
           />
         )}
         {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} />}
-        {activeTab === '투표' && <div className="text-center text-gray-400 py-16">투표 기능 준비 중</div>}
+        {activeTab === '투표' && <VoteTab tripId={trip.id} userName={userName} />}
         {activeTab === '사진' && <div className="text-center text-gray-400 py-16">사진 기능 준비 중</div>}
       </main>
     </div>
