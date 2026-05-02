@@ -521,10 +521,10 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
           + 일정 추가
         </button>
         <button
-          onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false) }}
-          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+          disabled
+          className="px-4 py-3 rounded-xl font-medium text-sm border bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
         >
-          ✨ AI
+          ✨ 준비 중
         </button>
         <button
           onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false) }}

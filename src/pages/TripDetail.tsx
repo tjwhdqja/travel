@@ -5,6 +5,7 @@ import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
 import ChecklistTab from './ChecklistTab'
 import ShoppingTab from './ShoppingTab'
+import GuideTab from './GuideTab'
 
 interface Trip {
   id: string
@@ -15,13 +16,14 @@ interface Trip {
   budget: number
 }
 
-type Tab = '일정' | '경비' | '체크' | '쇼핑'
+type Tab = '일정' | '경비' | '체크' | '쇼핑' | '가이드'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: '일정', label: '🗓 일정' },
   { id: '경비', label: '💰 경비' },
   { id: '체크', label: '✅ 체크' },
   { id: '쇼핑', label: '🛍 쇼핑' },
+  { id: '가이드', label: '🗺 가이드' },
 ]
 
 function getInitial(name: string) {
@@ -146,6 +148,7 @@ export default function TripDetail() {
         {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} />}
         {activeTab === '체크' && <ChecklistTab tripId={trip.id} userName={userName} />}
         {activeTab === '쇼핑' && <ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} />}
+        {activeTab === '가이드' && <GuideTab destination={trip.destination} />}
       </main>
     </div>
   )

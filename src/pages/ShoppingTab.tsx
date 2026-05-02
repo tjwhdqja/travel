@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
 
 interface ShopItem {
   id: string
@@ -50,8 +49,9 @@ const SHOPPING_DATA: Record<string, RecommendGroup[]> = {
     { label: '🎁 기념품', items: ['사슴 굿즈', '나라 전통 공예품'] },
   ],
   '미야코지마': [
-    { label: '🍬 간식·식품', items: ['미야코섬 소금', '흑당 과자', '사탕수수 주스', '미야코 소바 세트'] },
-    { label: '🎁 기념품', items: ['미야코 블루 굿즈', '산호 액세서리'] },
+    { label: '🍬 간식·식품', items: ['미야코섬 소금', '흑당 과자 (치인스코)', '사탕수수 설탕', '미야코 소바 세트', '아와모리 미니어처', '모즈쿠 (해초) 가공품', '도라야키 (흑당 맛)'] },
+    { label: '🛍 패션·뷰티', items: ['미야코 블루 티셔츠', '아마미 오시마 직물 소품', '류큐 유리 제품', '오키나와 선크림'] },
+    { label: '🎁 기념품', items: ['산호 액세서리', '시사 (시쉐) 도자기 인형', '미야코지마 지도 엽서', '해양 레진 공예품', '조개껍데기 인테리어 소품'] },
   ],
   '방콕': [
     { label: '🍬 간식·식품', items: ['망고 말린것', '코코넛 사탕', '마사만 카레 페이스트', '팟타이 소스'] },
@@ -222,8 +222,7 @@ interface Props {
 export default function ShoppingTab({ tripId, userName, destination }: Props) {
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [aiItems, setAiItems] = useState<RecommendGroup[]>([])
-  const [aiLoading, setAiLoading] = useState(false)
+  const [aiItems] = useState<RecommendGroup[]>([])
   const [showRecommend, setShowRecommend] = useState(true)
 
   const presetData = SHOPPING_DATA[destination] ?? null
@@ -256,25 +255,6 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
   async function deleteItem(id: string) {
     await supabase.from('checklists').delete().eq('id', id)
     setItems(prev => prev.filter(i => i.id !== id))
-  }
-
-  async function generateAI() {
-    setAiLoading(true)
-    const prompt = `${destination} 여행 시 사오기 좋은 특산품, 기념품, 현지 간식 추천을 아래 JSON 형식으로만 답해 (설명 없이):
-[{"label":"🍬 간식·식품","items":["아이템1","아이템2"]},{"label":"🛍 패션·뷰티","items":[]},{"label":"🎁 기념품","items":["아이템1"]}]
-각 카테고리 5개 이내, 없는 카테고리는 제외`
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
-      )
-      const data = await res.json()
-      const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-      const match = text.match(/\[[\s\S]*\]/)
-      if (match) setAiItems(JSON.parse(match[0]) as RecommendGroup[])
-    } catch { /* silent */ }
-    setAiLoading(false)
   }
 
   const recommendGroups = aiItems.length > 0 ? aiItems : presetData
@@ -324,9 +304,9 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
                 <p className="text-xs text-gray-400 mb-3">"{destination}"의 추천 정보가 없어요</p>
               </div>
             )}
-            <button onClick={generateAI} disabled={aiLoading}
-              className="w-full mt-1 py-2 rounded-xl bg-indigo-500 text-white text-xs font-semibold hover:bg-indigo-600 disabled:opacity-60 transition">
-              {aiLoading ? '✨ AI 추천 불러오는 중...' : '✨ AI 추천 더보기'}
+            <button disabled
+              className="w-full mt-1 py-2 rounded-xl bg-gray-100 text-gray-400 text-xs font-semibold cursor-not-allowed">
+              ✨ AI 추천 (준비 중)
             </button>
           </div>
         )}
