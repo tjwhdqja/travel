@@ -62,10 +62,9 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
   }, [tripId])
 
   useEffect(() => {
-    // base=USD로 환율 가져오기: 1 USD = X 각국 통화
-    fetch('https://api.frankfurter.app/latest?base=USD&symbols=KRW,JPY,EUR,CNY,THB')
+    fetch('https://open.er-api.com/v6/latest/USD')
       .then(r => r.json())
-      .then(data => setRates({ ...data.rates, USD: 1 }))
+      .then(data => setRates(data.rates ?? {}))
       .catch(() => {})
   }, [])
 
