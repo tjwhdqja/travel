@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
 import ChecklistTab from './ChecklistTab'
-import NoteTab from './NoteTab'
+import ShoppingTab from './ShoppingTab'
 
 interface Trip {
   id: string
@@ -15,13 +15,13 @@ interface Trip {
   budget: number
 }
 
-type Tab = '일정' | '경비' | '체크' | '메모'
+type Tab = '일정' | '경비' | '체크' | '쇼핑'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: '일정', label: '🗓 일정' },
   { id: '경비', label: '💰 경비' },
   { id: '체크', label: '✅ 체크' },
-  { id: '메모', label: '📝 메모' },
+  { id: '쇼핑', label: '🛍 쇼핑' },
 ]
 
 function getInitial(name: string) {
@@ -145,7 +145,7 @@ export default function TripDetail() {
         {activeTab === '일정' && <ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} destination={trip.destination} />}
         {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} />}
         {activeTab === '체크' && <ChecklistTab tripId={trip.id} userName={userName} />}
-        {activeTab === '메모' && <NoteTab tripId={trip.id} />}
+        {activeTab === '쇼핑' && <ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} />}
       </main>
     </div>
   )

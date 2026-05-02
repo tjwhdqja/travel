@@ -71,7 +71,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   }, [tripId])
 
   async function fetchItems() {
-    const { data } = await supabase.from('checklists').select('*').eq('trip_id', tripId).order('created_at')
+    const { data } = await supabase.from('checklists').select('*').eq('trip_id', tripId).eq('type', 'packing').order('created_at')
     setItems(data ?? [])
     setLoading(false)
   }
@@ -79,7 +79,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   async function addItem(text: string) {
     if (!text.trim()) return
     const { data } = await supabase.from('checklists')
-      .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName }])
+      .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'packing' }])
       .select().single()
     if (data) setItems(prev => [...prev, data])
     setNewText('')
