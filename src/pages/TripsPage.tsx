@@ -11,6 +11,7 @@ interface Trip {
   end_date: string
   budget: number
   created_at: string
+  created_by: string | null
 }
 
 type FormState = { name: string; destination: string; start_date: string; end_date: string; budget: string }
@@ -178,7 +179,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     const { data } = await supabase.from('trips').insert([{
       name: form.name, destination: form.destination,
       start_date: form.start_date, end_date: form.end_date,
-      budget: Number(form.budget) || 0
+      budget: Number(form.budget) || 0, created_by: nickname
     }]).select().single()
     if (data) {
       await supabase.from('trip_members').insert([{ trip_id: data.id, name: nickname }])
@@ -342,10 +343,12 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                   </div>
                   <div className="flex items-center gap-2 ml-2 shrink-0">
                     <span className="text-indigo-500 text-sm font-bold">{dday}</span>
-                    <HamburgerMenu items={[
-                      { label: '수정', onClick: () => openEdit(trip) },
-                      { label: '삭제', onClick: () => deleteTrip(trip.id), danger: true },
-                    ]} />
+                    {trip.created_by === nickname && (
+                      <HamburgerMenu items={[
+                        { label: '수정', onClick: () => openEdit(trip) },
+                        { label: '삭제', onClick: () => deleteTrip(trip.id), danger: true },
+                      ]} />
+                    )}
                   </div>
                 </div>
                 <div className="cursor-pointer" onClick={() => navigate(`/trip/${trip.id}`)}>
