@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import HamburgerMenu from '../components/HamburgerMenu'
 
 interface Trip {
   id: string
@@ -76,21 +77,9 @@ export default function TripsPage({ nickname }: { nickname: string }) {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
-  const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
-  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { fetchTrips() }, [])
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenu(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
 
   async function fetchTrips() {
     const { data } = await supabase.from('trips').select('*').order('created_at', { ascending: false })
@@ -223,22 +212,10 @@ export default function TripsPage({ nickname }: { nickname: string }) {
                   </div>
                   <div className="flex items-center gap-2 ml-2 shrink-0">
                     <span className="text-indigo-500 text-sm font-bold">{dday}</span>
-                    <div ref={openMenu === trip.id ? menuRef : null} className="relative">
-                      <button
-                        onClick={e => { e.stopPropagation(); setOpenMenu(openMenu === trip.id ? null : trip.id) }}
-                        className="flex flex-col gap-[3px] items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition"
-                      >
-                        <span className="block w-4 h-[2px] bg-gray-400 rounded" />
-                        <span className="block w-4 h-[2px] bg-gray-400 rounded" />
-                        <span className="block w-4 h-[2px] bg-gray-400 rounded" />
-                      </button>
-                      {openMenu === trip.id && (
-                        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden min-w-[90px]">
-                          <button onClick={e => { e.stopPropagation(); openEdit(trip) }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">수정</button>
-                          <button onClick={e => { e.stopPropagation(); setOpenMenu(null); deleteTrip(trip.id) }} className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-50">삭제</button>
-                        </div>
-                      )}
-                    </div>
+                    <HamburgerMenu items={[
+                      { label: '수정', onClick: () => openEdit(trip) },
+                      { label: '삭제', onClick: () => deleteTrip(trip.id), danger: true },
+                    ]} />
                   </div>
                 </div>
                 <div className="cursor-pointer" onClick={() => navigate(`/trip/${trip.id}`)}>

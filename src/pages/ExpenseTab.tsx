@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import PillButton from '../components/PillButton'
 
 interface Expense {
   id: string
@@ -251,12 +252,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
               <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map(cat => (
-                  <button key={cat.id} type="button"
+                  <PillButton key={cat.id} label={`${cat.emoji} ${cat.id}`}
+                    selected={form.category === cat.id}
                     onClick={() => setForm({ ...form, category: cat.id })}
-                    className={`px-3 py-1.5 rounded-full text-sm transition ${form.category === cat.id ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                  >
-                    {cat.emoji} {cat.id}
-                  </button>
+                  />
                 ))}
               </div>
             </div>
@@ -273,12 +272,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
               <label className="text-xs text-gray-500 mb-2 block">통화</label>
               <div className="flex gap-1.5 flex-wrap">
                 {CURRENCIES.map(cur => (
-                  <button key={cur} type="button"
+                  <PillButton key={cur} label={cur}
+                    selected={form.currency === cur}
                     onClick={() => setForm({ ...form, currency: cur })}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${form.currency === cur ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                  >
-                    {cur}
-                  </button>
+                  />
                 ))}
               </div>
             </div>
@@ -303,12 +300,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
               <label className="text-xs text-gray-500 mb-2 block">결제한 사람</label>
               <div className="flex flex-wrap gap-2">
                 {members.map(m => (
-                  <button key={m} type="button"
+                  <PillButton key={m} label={m}
+                    selected={form.paid_by === m}
                     onClick={() => setForm({ ...form, paid_by: m })}
-                    className={`px-3 py-1.5 rounded-full text-sm transition ${form.paid_by === m ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                  >
-                    {m}
-                  </button>
+                  />
                 ))}
               </div>
             </div>
@@ -317,12 +312,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0 }: Props) {
               <label className="text-xs text-gray-500 mb-2 block">나눌 사람</label>
               <div className="flex flex-wrap gap-2">
                 {members.map(m => (
-                  <button key={m} type="button"
+                  <PillButton key={m} label={m}
+                    selected={form.split_with.includes(m)}
                     onClick={() => toggleSplit(m)}
-                    className={`px-3 py-1.5 rounded-full text-sm transition ${form.split_with.includes(m) ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'}`}
-                  >
-                    {m}
-                  </button>
+                  />
                 ))}
               </div>
               {form.split_with.length > 0 && form.amount && (

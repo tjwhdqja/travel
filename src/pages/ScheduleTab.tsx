@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import HamburgerMenu from '../components/HamburgerMenu'
+import PillButton from '../components/PillButton'
 
 interface Schedule {
   id: string
@@ -62,14 +64,12 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
         <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map(cat => (
-            <button
+            <PillButton
               key={cat.id}
-              type="button"
+              label={`${cat.emoji} ${cat.id}`}
+              selected={form.category === cat.id}
               onClick={() => setForm({ ...form, category: cat.id })}
-              className={`px-3 py-1.5 rounded-full text-sm transition ${form.category === cat.id ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-            >
-              {cat.emoji} {cat.id}
-            </button>
+            />
           ))}
         </div>
       </div>
@@ -121,16 +121,12 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
           <label className="text-xs text-gray-500 mb-2 block">참여 인원 (선택)</label>
           <div className="flex flex-wrap gap-2">
             {members.map(m => (
-              <button
+              <PillButton
                 key={m}
-                type="button"
+                label={m}
+                selected={form.participants.includes(m)}
                 onClick={() => toggleParticipant(m)}
-                className={`px-3 py-1.5 rounded-full text-sm transition ${
-                  form.participants.includes(m) ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'
-                }`}
-              >
-                {m}
-              </button>
+              />
             ))}
           </div>
         </div>
@@ -178,19 +174,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpenMenu(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
 
   useEffect(() => {
     if (userName) fetchAll()
@@ -350,32 +334,10 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
                               )}
                               {item.created_by && <p className="text-xs text-gray-300 mt-1">{item.created_by}</p>}
                             </div>
-                            <div ref={openMenu === item.id ? menuRef : null} className="relative flex-shrink-0">
-                              <button
-                                onClick={() => setOpenMenu(openMenu === item.id ? null : item.id)}
-                                className="flex flex-col gap-[3px] items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition"
-                              >
-                                <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
-                                <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
-                                <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
-                              </button>
-                              {openMenu === item.id && (
-                                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden min-w-[90px]">
-                                  <button
-                                    onClick={() => { startEdit(item); setOpenMenu(null) }}
-                                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                                  >
-                                    수정
-                                  </button>
-                                  <button
-                                    onClick={() => { setOpenMenu(null); deleteSchedule(item.id) }}
-                                    className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-50"
-                                  >
-                                    삭제
-                                  </button>
-                                </div>
-                              )}
-                            </div>
+                            <HamburgerMenu items={[
+                              { label: '수정', onClick: () => startEdit(item) },
+                              { label: '삭제', onClick: () => deleteSchedule(item.id), danger: true },
+                            ]} />
                           </div>
                         )}
                       </div>
