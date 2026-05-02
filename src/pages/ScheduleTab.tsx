@@ -221,13 +221,13 @@ interface AISchedule { time: string; title: string; location: string; category: 
 interface AIDay { day: number; date: string; schedules: AISchedule[] }
 
 interface AIGeneratorProps {
+  destination: string
   startDate: string
   endDate: string
   onAddAll: (items: AIDay[]) => void
 }
 
-function AIScheduleGenerator({ startDate, endDate, onAddAll }: AIGeneratorProps) {
-  const [destination, setDestination] = useState('')
+function AIScheduleGenerator({ destination, startDate, endDate, onAddAll }: AIGeneratorProps) {
   const [style, setStyle] = useState('관광 위주')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AIDay[] | null>(null)
@@ -272,19 +272,14 @@ function AIScheduleGenerator({ startDate, endDate, onAddAll }: AIGeneratorProps)
 
       {!result ? (
         <>
-          <input
-            value={destination}
-            onChange={e => setDestination(e.target.value)}
-            placeholder="여행지 입력 (예: 오사카, 도쿄)"
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-          />
+          <p className="text-xs text-gray-400">📍 {destination} · {days}일</p>
           <div className="flex flex-wrap gap-2">
             {STYLES.map(s => (
               <PillButton key={s} label={s} selected={style === s} onClick={() => setStyle(s)} />
             ))}
           </div>
           <button
-            onClick={generate} disabled={loading || !destination.trim()}
+            onClick={generate} disabled={loading}
             className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
           >
             {loading ? '🤖 생성 중...' : `${days}일 일정 생성`}
@@ -469,6 +464,7 @@ interface Props {
   userName: string
   startDate: string
   endDate: string
+  destination: string
 }
 
 const emptyForm = (date: string): FormState => ({
@@ -489,7 +485,7 @@ function getAllDates(start: string, end: string): string[] {
   return dates
 }
 
-export default function ScheduleTab({ tripId, userName, startDate, endDate }: Props) {
+export default function ScheduleTab({ tripId, userName, startDate, endDate, destination }: Props) {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [members, setMembers] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -654,7 +650,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
         </button>
       </div>
 
-      {showAI && <AIScheduleGenerator startDate={startDate} endDate={endDate} onAddAll={addAllFromAI} />}
+      {showAI && <AIScheduleGenerator destination={destination} startDate={startDate} endDate={endDate} onAddAll={addAllFromAI} />}
       {showNearby && <NearbyRecommendations onAdd={addFromNearby} />}
 
       {showForm && (
