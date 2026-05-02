@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
+import LocationInput from '../components/LocationInput'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
@@ -55,60 +56,6 @@ interface FormProps {
   onSubmit: (e: React.FormEvent) => void
   submitLabel: string
   onCancel: () => void
-}
-
-function LocationInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
-
-  async function fetchSuggestions(input: string) {
-    if (input.length < 2) { setSuggestions([]); return }
-    try {
-      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': MAPS_API_KEY },
-        body: JSON.stringify({ input }),
-      })
-      const data = await res.json()
-      const names: string[] = (data.suggestions ?? [])
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((s: any) => s.placePrediction?.structuredFormat?.mainText?.text ?? '')
-        .filter(Boolean).slice(0, 5)
-      setSuggestions(names)
-    } catch { setSuggestions([]) }
-  }
-
-  function handleChange(val: string) {
-    onChange(val)
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => fetchSuggestions(val), 350)
-  }
-
-  return (
-    <div className="relative">
-      <input
-        value={value}
-        onChange={e => handleChange(e.target.value)}
-        onBlur={() => setTimeout(() => setSuggestions([]), 150)}
-        placeholder="장소 검색"
-        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-      />
-      {suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-          {suggestions.map((name, i) => (
-            <button key={i} type="button"
-              onMouseDown={e => { e.preventDefault(); onChange(name); setSuggestions([]) }}
-              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-2"
-            >
-              <span className="text-gray-400">📍</span> {name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 function RouteConnector({ from, to }: { from: string | null; to: string | null }) {

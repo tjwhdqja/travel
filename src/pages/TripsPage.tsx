@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
+import LocationInput from '../components/LocationInput'
 
 interface Trip {
   id: string
@@ -36,12 +37,10 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
           required
           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
         />
-        <input
-          placeholder="여행지 (예: 일본 오사카)"
+        <LocationInput
           value={form.destination}
-          onChange={e => setForm({ ...form, destination: e.target.value })}
-          required
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+          onChange={v => setForm({ ...form, destination: v })}
+          placeholder="여행지 (예: 일본 오사카)"
         />
         <div className="flex gap-2">
           <div className="flex-1">
