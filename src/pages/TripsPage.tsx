@@ -17,6 +17,7 @@ export default function TripsPage({ nickname }: { nickname: string }) {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
   const [form, setForm] = useState({ name: '', destination: '', start_date: '', end_date: '', budget: '' })
 
   useEffect(() => { fetchTrips() }, [])
@@ -41,6 +42,41 @@ export default function TripsPage({ nickname }: { nickname: string }) {
       setShowForm(false)
       setForm({ name: '', destination: '', start_date: '', end_date: '', budget: '' })
     }
+  }
+
+  async function updateTrip(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingTrip) return
+    const { data } = await supabase.from('trips').update({
+      name: form.name,
+      destination: form.destination,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      budget: Number(form.budget) || 0
+    }).eq('id', editingTrip.id).select().single()
+    if (data) {
+      setTrips(prev => prev.map(t => t.id === data.id ? data : t))
+      setEditingTrip(null)
+      setForm({ name: '', destination: '', start_date: '', end_date: '', budget: '' })
+    }
+  }
+
+  async function deleteTrip(id: string) {
+    if (!confirm('여행을 삭제하면 모든 데이터가 사라져요. 정말 삭제할까요?')) return
+    await supabase.from('trips').delete().eq('id', id)
+    setTrips(prev => prev.filter(t => t.id !== id))
+  }
+
+  function openEdit(trip: Trip) {
+    setEditingTrip(trip)
+    setForm({
+      name: trip.name,
+      destination: trip.destination,
+      start_date: trip.start_date,
+      end_date: trip.end_date,
+      budget: trip.budget > 0 ? String(trip.budget) : ''
+    })
+    setShowForm(false)
   }
 
   function getStatus(trip: Trip): { label: string; color: string } {
@@ -68,6 +104,55 @@ export default function TripsPage({ nickname }: { nickname: string }) {
     return new Date(date).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
   }
 
+  const TripForm = ({ onSubmit, title, submitLabel }: { onSubmit: (e: React.FormEvent) => void; title: string; submitLabel: string }) => (
+    <div className="bg-white rounded-2xl shadow-sm p-6">
+      <h2 className="font-bold text-gray-800 mb-4">{title}</h2>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <input
+          placeholder="여행 이름 (예: 오사카 여행)"
+          value={form.name}
+          onChange={e => setForm({ ...form, name: e.target.value })}
+          required
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+        />
+        <input
+          placeholder="여행지 (예: 일본 오사카)"
+          value={form.destination}
+          onChange={e => setForm({ ...form, destination: e.target.value })}
+          required
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+        />
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="text-xs text-gray-500 mb-1 block">출발일</label>
+            <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-gray-500 mb-1 block">귀국일</label>
+            <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
+          </div>
+        </div>
+        <input
+          type="number"
+          placeholder="총 예산 (원, 선택)"
+          value={form.budget}
+          onChange={e => setForm({ ...form, budget: e.target.value })}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+        />
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => { setShowForm(false); setEditingTrip(null); setForm({ name: '', destination: '', start_date: '', end_date: '', budget: '' }) }}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            취소
+          </button>
+          <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">{submitLabel}</button>
+        </div>
+      </form>
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between">
@@ -82,54 +167,14 @@ export default function TripsPage({ nickname }: { nickname: string }) {
 
       <main className="max-w-lg mx-auto p-4 space-y-4">
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => { setShowForm(true); setEditingTrip(null); setForm({ name: '', destination: '', start_date: '', end_date: '', budget: '' }) }}
           className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
         >
           + 새 여행 만들기
         </button>
 
-        {showForm && (
-          <div className="bg-white rounded-2xl shadow-sm p-6">
-            <h2 className="font-bold text-gray-800 mb-4">새 여행</h2>
-            <form onSubmit={createTrip} className="space-y-3">
-              <input
-                placeholder="여행 이름 (예: 오사카 여행)"
-                value={form.name}
-                onChange={e => setForm({ ...form, name: e.target.value })}
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-              />
-              <input
-                placeholder="여행지 (예: 일본 오사카)"
-                value={form.destination}
-                onChange={e => setForm({ ...form, destination: e.target.value })}
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-              />
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">출발일</label>
-                  <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">귀국일</label>
-                  <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
-                </div>
-              </div>
-              <input
-                type="number"
-                placeholder="총 예산 (원, 선택)"
-                value={form.budget}
-                onChange={e => setForm({ ...form, budget: e.target.value })}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-              />
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
-                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">만들기</button>
-              </div>
-            </form>
-          </div>
-        )}
+        {showForm && <TripForm onSubmit={createTrip} title="새 여행" submitLabel="만들기" />}
+        {editingTrip && <TripForm onSubmit={updateTrip} title="여행 수정" submitLabel="저장" />}
 
         {loading ? (
           <p className="text-center text-gray-400 py-8">불러오는 중...</p>
@@ -144,23 +189,38 @@ export default function TripsPage({ nickname }: { nickname: string }) {
             const status = getStatus(trip)
             const dday = getDday(trip)
             return (
-              <div
-                key={trip.id}
-                onClick={() => navigate(`/trip/${trip.id}`)}
-                className="bg-white rounded-2xl shadow-sm p-5 cursor-pointer hover:shadow-md transition"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-gray-800">{trip.name}</h3>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
+              <div key={trip.id} className="bg-white rounded-2xl shadow-sm p-5 hover:shadow-md transition">
+                <div
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/trip/${trip.id}`)}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-gray-800">{trip.name}</h3>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
+                    </div>
+                    <span className="text-indigo-500 text-sm font-bold ml-2 shrink-0">{dday}</span>
                   </div>
-                  <span className="text-indigo-500 text-sm font-bold ml-2 shrink-0">{dday}</span>
+                  <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
+                  <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}</p>
+                  {trip.budget > 0 && (
+                    <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>
+                  )}
                 </div>
-                <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
-                <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}</p>
-                {trip.budget > 0 && (
-                  <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>
-                )}
+                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+                  <button
+                    onClick={() => openEdit(trip)}
+                    className="flex-1 py-1.5 rounded-lg text-xs text-gray-500 hover:bg-gray-50 border border-gray-200 transition"
+                  >
+                    수정
+                  </button>
+                  <button
+                    onClick={() => deleteTrip(trip.id)}
+                    className="flex-1 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-50 border border-red-100 transition"
+                  >
+                    삭제
+                  </button>
+                </div>
               </div>
             )
           })
