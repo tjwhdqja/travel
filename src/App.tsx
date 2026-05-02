@@ -42,5 +42,5 @@ export default function App() {
 
   if (!session) return <LoginPage />
   if (!nickname) return <NicknameSetupPage userId={session.user.id} onComplete={setNickname} />
-  return <TripsPage nickname={nickname} />
+  return <TripsPage nickname={nickname} onNicknameChange={setNickname} />
 }

@@ -128,15 +128,27 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
 
 const emptyForm: FormState = { name: '', destination: '', start_date: '', end_date: '', budget: '' }
 
-export default function TripsPage({ nickname }: { nickname: string }) {
+export default function TripsPage({ nickname, onNicknameChange }: { nickname: string; onNicknameChange: (n: string) => void }) {
   const navigate = useNavigate()
   const [trips, setTrips] = useState<Trip[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
+  const [editingNickname, setEditingNickname] = useState(false)
+  const [nicknameInput, setNicknameInput] = useState(nickname)
 
   useEffect(() => { fetchTrips() }, [])
+
+  async function saveNickname() {
+    const trimmed = nicknameInput.trim()
+    if (!trimmed || trimmed === nickname) { setEditingNickname(false); return }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('profiles').update({ nickname: trimmed }).eq('id', user.id)
+    onNicknameChange(trimmed)
+    setEditingNickname(false)
+  }
 
   async function fetchTrips() {
     const { data } = await supabase.from('trips').select('*').order('created_at', { ascending: false })
@@ -226,7 +238,24 @@ export default function TripsPage({ nickname }: { nickname: string }) {
       <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-800">✈️ 우리들의 여행</h1>
-          <p className="text-xs text-gray-400">{nickname}님 안녕하세요</p>
+          {editingNickname ? (
+            <div className="flex items-center gap-1 mt-0.5">
+              <input
+                value={nicknameInput}
+                onChange={e => setNicknameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setEditingNickname(false) }}
+                autoFocus
+                className="text-xs border border-indigo-300 rounded-lg px-2 py-0.5 w-28 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+              <button onClick={saveNickname} className="text-xs text-indigo-500 font-medium">저장</button>
+              <button onClick={() => setEditingNickname(false)} className="text-xs text-gray-400">취소</button>
+            </div>
+          ) : (
+            <button onClick={() => { setNicknameInput(nickname); setEditingNickname(true) }}
+              className="text-xs text-gray-400 hover:text-indigo-500 text-left">
+              {nickname}님 안녕하세요 ✏️
+            </button>
+          )}
         </div>
         <button onClick={() => supabase.auth.signOut()} className="text-sm text-gray-400 hover:text-gray-600">
           로그아웃
