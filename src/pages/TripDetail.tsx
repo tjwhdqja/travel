@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import ScheduleTab from './ScheduleTab'
 
 interface Trip {
   id: string
@@ -17,10 +18,14 @@ export default function TripDetail() {
   const navigate = useNavigate()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('일정')
+  const [userName, setUserName] = useState('')
 
   useEffect(() => {
     supabase.from('trips').select('*').eq('id', id).single().then(({ data }) => {
       setTrip(data)
+    })
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserName(user?.email?.split('@')[0] ?? '사용자')
     })
   }, [id])
 
@@ -62,7 +67,14 @@ export default function TripDetail() {
       </div>
 
       <main className="max-w-lg mx-auto p-4">
-        {activeTab === '일정' && <div className="text-center text-gray-400 py-16">일정 기능 준비 중</div>}
+        {activeTab === '일정' && (
+          <ScheduleTab
+            tripId={trip.id}
+            userName={userName}
+            startDate={trip.start_date}
+            endDate={trip.end_date}
+          />
+        )}
         {activeTab === '경비' && <div className="text-center text-gray-400 py-16">경비 기능 준비 중</div>}
         {activeTab === '투표' && <div className="text-center text-gray-400 py-16">투표 기능 준비 중</div>}
         {activeTab === '사진' && <div className="text-center text-gray-400 py-16">사진 기능 준비 중</div>}
