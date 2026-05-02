@@ -159,19 +159,21 @@ export default function ExpenseTab({ tripId, userName }: Props) {
               </span>
             ))}
           </div>
-          {allProfiles.filter(p => !members.includes(p)).length > 0 && (
-            <div ref={dropdownRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setShowDropdown(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition"
-              >
-                <span>멤버 추가하기</span>
-                <span className="text-gray-400">{showDropdown ? '▲' : '▼'}</span>
-              </button>
-              {showDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                  {allProfiles.filter(p => !members.includes(p)).map(p => (
+          <div ref={dropdownRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowDropdown(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition"
+            >
+              <span>멤버 추가하기</span>
+              <span className="text-gray-400">{showDropdown ? '▲' : '▼'}</span>
+            </button>
+            {showDropdown && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                {allProfiles.filter(p => !members.includes(p)).length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-gray-400">추가할 수 있는 멤버가 없어요</p>
+                ) : (
+                  allProfiles.filter(p => !members.includes(p)).map(p => (
                     <button
                       key={p}
                       type="button"
@@ -180,11 +182,11 @@ export default function ExpenseTab({ tripId, userName }: Props) {
                     >
                       {p}
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
