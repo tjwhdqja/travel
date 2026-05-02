@@ -11,6 +11,7 @@ interface Schedule {
   note: string | null
   created_by: string | null
   participants: string[]
+  category: string
 }
 
 type FormState = {
@@ -20,6 +21,20 @@ type FormState = {
   location: string
   note: string
   participants: string[]
+  category: string
+}
+
+const CATEGORIES = [
+  { id: '교통', emoji: '✈️' },
+  { id: '식사', emoji: '🍽' },
+  { id: '숙박', emoji: '🏨' },
+  { id: '관광', emoji: '🎡' },
+  { id: '쇼핑', emoji: '🛍' },
+  { id: '기타', emoji: '📌' },
+]
+
+function getCategoryEmoji(category: string) {
+  return CATEGORIES.find(c => c.id === category)?.emoji ?? '📌'
 }
 
 interface FormProps {
@@ -43,6 +58,21 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setForm({ ...form, category: cat.id })}
+              className={`px-3 py-1.5 rounded-full text-sm transition ${form.category === cat.id ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+            >
+              {cat.emoji} {cat.id}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex gap-2">
         <div className="flex-1">
           <label className="text-xs text-gray-500 mb-1 block">날짜</label>
@@ -96,9 +126,7 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
                 type="button"
                 onClick={() => toggleParticipant(m)}
                 className={`px-3 py-1.5 rounded-full text-sm transition ${
-                  form.participants.includes(m)
-                    ? 'bg-indigo-100 text-indigo-600'
-                    : 'bg-gray-100 text-gray-400'
+                  form.participants.includes(m) ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400'
                 }`}
               >
                 {m}
@@ -108,17 +136,10 @@ function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, su
         </div>
       )}
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
-        >
+        <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
           취소
         </button>
-        <button
-          type="submit"
-          className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600"
-        >
+        <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">
           {submitLabel}
         </button>
       </div>
@@ -134,8 +155,19 @@ interface Props {
 }
 
 const emptyForm = (date: string): FormState => ({
-  date, time: '', title: '', location: '', note: '', participants: []
+  date, time: '', title: '', location: '', note: '', participants: [], category: '기타'
 })
+
+function getAllDates(start: string, end: string): string[] {
+  const dates: string[] = []
+  const cur = new Date(start + 'T00:00:00')
+  const last = new Date(end + 'T00:00:00')
+  while (cur <= last) {
+    dates.push(cur.toISOString().split('T')[0])
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
+}
 
 export default function ScheduleTab({ tripId, userName, startDate, endDate }: Props) {
   const [schedules, setSchedules] = useState<Schedule[]>([])
@@ -183,8 +215,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     const { data } = await supabase
       .from('schedules')
       .insert([{ ...form, trip_id: tripId, created_by: userName }])
-      .select()
-      .single()
+      .select().single()
     if (data) {
       setSchedules(prev => sorted([...prev, data]))
       setShowForm(false)
@@ -197,16 +228,12 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     const { data } = await supabase
       .from('schedules')
       .update({
-        date: form.date,
-        time: form.time || null,
-        title: form.title,
-        location: form.location || null,
-        note: form.note || null,
-        participants: form.participants
+        date: form.date, time: form.time || null,
+        title: form.title, location: form.location || null,
+        note: form.note || null, participants: form.participants,
+        category: form.category
       })
-      .eq('id', editingId)
-      .select()
-      .single()
+      .eq('id', editingId).select().single()
     if (data) {
       setSchedules(prev => sorted(prev.map(s => s.id === editingId ? data : s)))
       setEditingId(null)
@@ -217,12 +244,10 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     setEditingId(item.id)
     setShowForm(false)
     setForm({
-      date: item.date,
-      time: item.time ?? '',
-      title: item.title,
-      location: item.location ?? '',
-      note: item.note ?? '',
-      participants: item.participants ?? []
+      date: item.date, time: item.time ?? '',
+      title: item.title, location: item.location ?? '',
+      note: item.note ?? '', participants: item.participants ?? [],
+      category: item.category ?? '기타'
     })
   }
 
@@ -230,12 +255,6 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     await supabase.from('schedules').delete().eq('id', id)
     setSchedules(prev => prev.filter(s => s.id !== id))
   }
-
-  const grouped = schedules.reduce<Record<string, Schedule[]>>((acc, s) => {
-    if (!acc[s.date]) acc[s.date] = []
-    acc[s.date].push(s)
-    return acc
-  }, {})
 
   function formatDate(dateStr: string) {
     const date = new Date(dateStr + 'T00:00:00')
@@ -245,9 +264,16 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
   function getDayNumber(dateStr: string) {
     const start = new Date(startDate + 'T00:00:00')
     const cur = new Date(dateStr + 'T00:00:00')
-    const diff = Math.round((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-    return diff + 1
+    return Math.round((cur.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
   }
+
+  const grouped = schedules.reduce<Record<string, Schedule[]>>((acc, s) => {
+    if (!acc[s.date]) acc[s.date] = []
+    acc[s.date].push(s)
+    return acc
+  }, {})
+
+  const allDates = getAllDates(startDate, endDate)
 
   return (
     <div className="space-y-4">
@@ -272,85 +298,91 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
 
       {loading ? (
         <p className="text-center text-gray-400 py-8">불러오는 중...</p>
-      ) : Object.keys(grouped).length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <div className="text-5xl mb-3">🗓</div>
-          <p>아직 일정이 없어요</p>
-          <p className="text-sm mt-1">일정을 추가해보세요!</p>
-        </div>
       ) : (
-        Object.entries(grouped).map(([date, items]) => (
-          <div key={date}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2.5 py-1 rounded-full">
-                Day {getDayNumber(date)}
-              </span>
-              <span className="text-sm text-gray-500">{formatDate(date)}</span>
-            </div>
-            <div className="space-y-2">
-              {items.map(item => (
-                <div key={item.id}>
-                  {editingId === item.id ? (
-                    <div className="bg-white rounded-xl p-4 shadow-sm">
-                      <h3 className="font-bold text-gray-800 mb-3 text-sm">일정 수정</h3>
-                      <ScheduleForm
-                        form={form} setForm={setForm} members={members}
-                        startDate={startDate} endDate={endDate}
-                        onSubmit={updateSchedule} submitLabel="저장"
-                        onCancel={() => setEditingId(null)}
-                      />
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-xl p-4 shadow-sm flex items-start gap-3">
-                      <div className="text-center min-w-[44px]">
-                        {item.time ? (
-                          <span className="text-xs font-medium text-indigo-500">{item.time.slice(0, 5)}</span>
+        <div className="space-y-4">
+          {allDates.map(date => {
+            const items = grouped[date] ?? []
+            const dayNum = getDayNumber(date)
+            return (
+              <div key={date}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2.5 py-1 rounded-full">
+                    Day {dayNum}
+                  </span>
+                  <span className="text-sm text-gray-500">{formatDate(date)}</span>
+                </div>
+
+                {items.length === 0 ? (
+                  <div className="border border-dashed border-gray-200 rounded-xl px-4 py-3 text-center">
+                    <p className="text-xs text-gray-300">일정 없음</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {items.map(item => (
+                      <div key={item.id}>
+                        {editingId === item.id ? (
+                          <div className="bg-white rounded-xl p-4 shadow-sm">
+                            <h3 className="font-bold text-gray-800 mb-3 text-sm">일정 수정</h3>
+                            <ScheduleForm
+                              form={form} setForm={setForm} members={members}
+                              startDate={startDate} endDate={endDate}
+                              onSubmit={updateSchedule} submitLabel="저장"
+                              onCancel={() => setEditingId(null)}
+                            />
+                          </div>
                         ) : (
-                          <span className="text-xs text-gray-300">미정</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm">{item.title}</p>
-                        {item.location && <p className="text-xs text-gray-400 mt-0.5">📍 {item.location}</p>}
-                        {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
-                        {item.participants?.length > 0 && (
-                          <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
-                        )}
-                        {item.created_by && <p className="text-xs text-gray-300 mt-1">{item.created_by}</p>}
-                      </div>
-                      <div ref={openMenu === item.id ? menuRef : null} className="relative flex-shrink-0">
-                        <button
-                          onClick={() => setOpenMenu(openMenu === item.id ? null : item.id)}
-                          className="flex flex-col gap-[3px] items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition"
-                        >
-                          <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
-                          <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
-                          <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
-                        </button>
-                        {openMenu === item.id && (
-                          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden min-w-[90px]">
-                            <button
-                              onClick={() => { startEdit(item); setOpenMenu(null) }}
-                              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                              수정
-                            </button>
-                            <button
-                              onClick={() => { setOpenMenu(null); deleteSchedule(item.id) }}
-                              className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-50"
-                            >
-                              삭제
-                            </button>
+                          <div className="bg-white rounded-xl p-4 shadow-sm flex items-start gap-3">
+                            <div className="flex flex-col items-center min-w-[36px]">
+                              <span className="text-xl">{getCategoryEmoji(item.category)}</span>
+                              <span className="text-xs font-medium text-indigo-500 mt-0.5">
+                                {item.time ? item.time.slice(0, 5) : <span className="text-gray-300">미정</span>}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-800 text-sm">{item.title}</p>
+                              {item.location && <p className="text-xs text-gray-400 mt-0.5">📍 {item.location}</p>}
+                              {item.note && <p className="text-xs text-gray-400 mt-0.5">{item.note}</p>}
+                              {item.participants?.length > 0 && (
+                                <p className="text-xs text-indigo-400 mt-0.5">👥 {item.participants.join(', ')}</p>
+                              )}
+                              {item.created_by && <p className="text-xs text-gray-300 mt-1">{item.created_by}</p>}
+                            </div>
+                            <div ref={openMenu === item.id ? menuRef : null} className="relative flex-shrink-0">
+                              <button
+                                onClick={() => setOpenMenu(openMenu === item.id ? null : item.id)}
+                                className="flex flex-col gap-[3px] items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition"
+                              >
+                                <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
+                                <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
+                                <span className="block w-3.5 h-[2px] bg-gray-400 rounded" />
+                              </button>
+                              {openMenu === item.id && (
+                                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden min-w-[90px]">
+                                  <button
+                                    onClick={() => { startEdit(item); setOpenMenu(null) }}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    onClick={() => { setOpenMenu(null); deleteSchedule(item.id) }}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-50"
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
