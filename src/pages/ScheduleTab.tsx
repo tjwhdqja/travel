@@ -7,6 +7,7 @@ import type { DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
 
 interface Schedule {
   id: string
@@ -216,6 +217,114 @@ function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
   )
 }
 
+interface AISchedule { time: string; title: string; location: string; category: string; note: string }
+interface AIDay { day: number; date: string; schedules: AISchedule[] }
+
+interface AIGeneratorProps {
+  startDate: string
+  endDate: string
+  onAddAll: (items: AIDay[]) => void
+}
+
+function AIScheduleGenerator({ startDate, endDate, onAddAll }: AIGeneratorProps) {
+  const [destination, setDestination] = useState('')
+  const [style, setStyle] = useState('관광 위주')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<AIDay[] | null>(null)
+  const [error, setError] = useState('')
+
+  const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
+  const STYLES = ['관광 위주', '맛집 투어', '휴양/힐링', '쇼핑 위주', '액티비티']
+
+  async function generate() {
+    if (!destination.trim()) return
+    setLoading(true); setError(''); setResult(null)
+    const prompt = `${destination} ${days}박${days - 1}일 여행 일정을 짜줘. 스타일: ${style}.
+시작일: ${startDate}, 종료일: ${endDate}.
+아래 JSON 배열 형식으로만 답해 (설명 없이):
+[{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식사|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
+하루에 4~6개 일정. category는 반드시 교통/식사/숙박/관광/쇼핑/기타 중 하나.`
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        }
+      )
+      const data = await res.json()
+      const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      const jsonMatch = text.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) throw new Error('파싱 실패')
+      setResult(JSON.parse(jsonMatch[0]) as AIDay[])
+    } catch {
+      setError('일정 생성에 실패했습니다. 다시 시도해주세요.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+      <p className="font-semibold text-sm text-gray-800">✨ AI 일정 생성</p>
+
+      {!result ? (
+        <>
+          <input
+            value={destination}
+            onChange={e => setDestination(e.target.value)}
+            placeholder="여행지 입력 (예: 오사카, 도쿄)"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+          />
+          <div className="flex flex-wrap gap-2">
+            {STYLES.map(s => (
+              <PillButton key={s} label={s} selected={style === s} onClick={() => setStyle(s)} />
+            ))}
+          </div>
+          <button
+            onClick={generate} disabled={loading || !destination.trim()}
+            className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
+          >
+            {loading ? '🤖 생성 중...' : `${days}일 일정 생성`}
+          </button>
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+        </>
+      ) : (
+        <>
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {result.map(day => (
+              <div key={day.day}>
+                <p className="text-xs font-bold text-indigo-500 mb-1">Day {day.day} · {day.date}</p>
+                {day.schedules.map((s, i) => (
+                  <div key={i} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                    <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-800">{s.title}</p>
+                      {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => setResult(null)}
+              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+              다시 생성
+            </button>
+            <button onClick={() => onAddAll(result)}
+              className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">
+              전체 일정에 추가
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function ScheduleForm({ form, setForm, members, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
   function toggleParticipant(name: string) {
     const next = form.participants.includes(name)
@@ -386,6 +495,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [showNearby, setShowNearby] = useState(false)
+  const [showAI, setShowAI] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
@@ -474,6 +584,23 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     setForm({ date: item.date, time: item.time ?? '', title: item.title, location: item.location ?? '', note: item.note ?? '', participants: item.participants ?? [], category: item.category ?? '기타' })
   }
 
+  async function addAllFromAI(days: AIDay[]) {
+    const inserts = days.flatMap(day =>
+      day.schedules.map((s, idx) => ({
+        trip_id: tripId, created_by: userName,
+        date: day.date, time: s.time || null,
+        title: s.title, location: s.location || null,
+        note: s.note || null, category: s.category || '기타',
+        participants: [], sort_order: idx,
+      }))
+    )
+    const { data } = await supabase.from('schedules').insert(inserts).select()
+    if (data) {
+      setSchedules(prev => sorted([...prev, ...data]))
+      setShowAI(false)
+    }
+  }
+
   function addFromNearby(name: string) {
     setShowNearby(false)
     setShowForm(true)
@@ -508,19 +635,26 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate }: Pr
     <div className="space-y-4">
       <div className="flex gap-2">
         <button
-          onClick={() => { setShowForm(true); setShowNearby(false); setEditingId(null); setForm(emptyForm(startDate)) }}
+          onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(startDate)) }}
           className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
         >
           + 일정 추가
         </button>
         <button
-          onClick={() => { setShowNearby(v => !v); setShowForm(false) }}
+          onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false) }}
+          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+        >
+          ✨ AI
+        </button>
+        <button
+          onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false) }}
           className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showNearby ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
         >
           📍 주변
         </button>
       </div>
 
+      {showAI && <AIScheduleGenerator startDate={startDate} endDate={endDate} onAddAll={addAllFromAI} />}
       {showNearby && <NearbyRecommendations onAdd={addFromNearby} />}
 
       {showForm && (
