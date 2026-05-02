@@ -28,20 +28,31 @@ export default function TripDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [trip, setTrip] = useState<Trip | null>(null)
+  const [notFound, setNotFound] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('일정')
   const [userName, setUserName] = useState('')
 
   useEffect(() => {
-    supabase.from('trips').select('*').eq('id', id).single().then(({ data }) => setTrip(data))
+    supabase.from('trips').select('*').eq('id', id).single().then(({ data, error }) => {
+      if (error || !data) { setNotFound(true); return }
+      setTrip(data)
+    })
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single()
       const name = profile?.nickname ?? user.email?.split('@')[0] ?? '사용자'
       setUserName(name)
-      const { data: existing } = await supabase.from('trip_members').select('id').eq('trip_id', id).eq('name', name).single()
+      const { data: existing } = await supabase.from('trip_members').select('id').eq('trip_id', id).eq('name', name).maybeSingle()
       if (!existing) await supabase.from('trip_members').insert([{ trip_id: id, name }])
     })
   }, [id])
+
+  if (notFound) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+      <p className="text-gray-400">여행을 찾을 수 없어요</p>
+      <button onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 목록으로</button>
+    </div>
+  )
 
   if (!trip) return (
     <div className="min-h-screen flex items-center justify-center">

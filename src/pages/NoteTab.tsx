@@ -12,9 +12,10 @@ export default function NoteTab({ tripId }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    supabase.from('notes').select('content').eq('trip_id', tripId).single().then(({ data }) => {
+    supabase.from('notes').select('content').eq('trip_id', tripId).maybeSingle().then(({ data }) => {
       if (data) setContent(data.content ?? '')
     })
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [tripId])
 
   function handleChange(val: string) {
