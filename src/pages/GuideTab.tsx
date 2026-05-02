@@ -464,11 +464,23 @@ export default function GuideTab({ destination }: Props) {
         <p className="text-xs text-gray-400 px-1">📍 {destination} · {section.emoji} {section.label}</p>
         {items.map((item, i) => (
           <div key={i} className="bg-white rounded-xl px-4 py-3 shadow-sm">
-            <p className="text-sm font-semibold text-gray-800">{item.name}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-            {item.tip && (
-              <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>
-            )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                {item.tip && (
+                  <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>
+                )}
+              </div>
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent(item.name + ' ' + destination)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-shrink-0 px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs rounded-lg hover:bg-indigo-50 hover:text-indigo-500 transition"
+              >
+                지도
+              </a>
+            </div>
           </div>
         ))}
       </div>
