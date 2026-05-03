@@ -41,6 +41,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
   const [rates, setRates] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
   const [showPreSettle, setShowPreSettle] = useState(false)
   const [preFrom, setPreFrom] = useState(userName)
@@ -106,6 +107,48 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       setShowForm(false)
       setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' })
     }
+  }
+
+  async function updateExpense(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingExpense) return
+    if (form.split_with.length === 0) return alert('정산할 사람을 선택해주세요')
+    const { data } = await supabase
+      .from('expenses')
+      .update({
+        title: form.title, amount: Number(form.amount),
+        paid_by: form.paid_by, split_with: form.split_with,
+        category: form.category, currency: form.currency,
+        payment_method: form.payment_method,
+      })
+      .eq('id', editingExpense.id)
+      .select().single()
+    if (data) {
+      setExpenses(prev => prev.map(ex => ex.id === data.id ? data : ex))
+      cancelForm()
+    }
+  }
+
+  function openEdit(exp: Expense) {
+    setEditingExpense(exp)
+    setShowForm(false)
+    setForm({
+      title: exp.title, amount: String(exp.amount),
+      paid_by: exp.paid_by, split_with: exp.split_with,
+      category: exp.category, currency: exp.currency,
+      payment_method: exp.payment_method,
+    })
+  }
+
+  function cancelForm() {
+    setShowForm(false)
+    setEditingExpense(null)
+    setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' })
+  }
+
+  function formatExpenseDate(dateStr: string) {
+    const d = new Date(dateStr)
+    return `${d.getMonth() + 1}월 ${d.getDate()}일`
   }
 
   async function addPreSettlement(e: React.FormEvent) {
@@ -216,16 +259,16 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       )}
 
       <button
-        onClick={() => { setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' }) }}
+        onClick={() => { setEditingExpense(null); setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' }) }}
         className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition text-sm"
       >
         + 지출 추가
       </button>
 
-      {showForm && (
+      {(showForm || editingExpense) && (
         <div className="bg-white rounded-2xl shadow-sm p-5">
-          <h3 className="font-bold text-gray-800 mb-4">지출 추가</h3>
-          <form onSubmit={addExpense} className="space-y-3">
+          <h3 className="font-bold text-gray-800 mb-4">{editingExpense ? '지출 수정' : '지출 추가'}</h3>
+          <form onSubmit={editingExpense ? updateExpense : addExpense} className="space-y-3">
             <div>
               <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
               <div className="flex flex-wrap gap-2">
@@ -316,8 +359,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
             </div>
 
             <div className="flex gap-2">
-              <button type="button" onClick={() => setShowForm(false)} className={btn.secondary}>취소</button>
-              <button type="submit" className={btn.action}>추가</button>
+              <button type="button" onClick={cancelForm} className={btn.secondary}>취소</button>
+              <button type="submit" className={btn.action}>{editingExpense ? '저장' : '추가'}</button>
             </div>
           </form>
         </div>
@@ -396,6 +439,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                     <p className="text-xs text-gray-400 mt-0.5">
                       {exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담
                       {exp.payment_method && <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>}
+                      <span className="ml-1 text-gray-300">· {formatExpenseDate(exp.created_at)}</span>
                     </p>
                   </div>
                   <div className="text-right shrink-0">
@@ -409,7 +453,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                       1인 {Math.round(toKRW(exp.amount, exp.currency) / exp.split_with.length).toLocaleString()}원
                     </p>
                   </div>
-                  <button onClick={() => deleteExpense(exp.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
+                  <div className="flex flex-col gap-0.5 shrink-0">
+                    <button onClick={() => openEdit(exp)} className="p-2 text-gray-300 hover:text-indigo-400 transition text-xs">수정</button>
+                    <button onClick={() => deleteExpense(exp.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
+                  </div>
                 </div>
               ))}
             </>
