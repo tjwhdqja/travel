@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PillButton from '../components/PillButton'
+import HamburgerMenu from '../components/HamburgerMenu'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
-import { btn } from '../lib/design'
+import { btn, input as inputCls } from '../lib/design'
 
 interface Expense {
   id: string
@@ -24,6 +25,16 @@ interface Props {
   members: string[]
 }
 
+type FormState = {
+  title: string
+  amount: string
+  paid_by: string
+  split_with: string[]
+  category: string
+  currency: string
+  payment_method: string
+}
+
 const CATEGORIES = [
   { id: '식비', emoji: '🍽' },
   { id: '교통', emoji: '🚌' },
@@ -36,22 +47,216 @@ const CATEGORIES = [
 
 const CURRENCIES = ['KRW', 'JPY', 'USD', 'EUR', 'CNY', 'THB']
 
+function getCategoryEmoji(cat: string) {
+  return CATEGORIES.find(c => c.id === cat)?.emoji ?? '💳'
+}
+
+function formatExpenseDate(dateStr: string) {
+  const d = new Date(dateStr)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`
+}
+
+function calcKRW(amount: number, currency: string, rates: Record<string, number>): number {
+  if (currency === 'KRW') return amount
+  if (!rates['KRW'] || !rates[currency]) return amount
+  return Math.round(amount * rates['KRW'] / rates[currency])
+}
+
+interface FormProps {
+  form: FormState
+  setForm: (f: FormState) => void
+  members: string[]
+  rates: Record<string, number>
+  onSubmit: (e: React.FormEvent) => void
+  submitLabel: string
+  onCancel: () => void
+}
+
+function ExpenseForm({ form, setForm, members, rates, onSubmit, submitLabel, onCancel }: FormProps) {
+  function toggleSplit(name: string) {
+    setForm({
+      ...form,
+      split_with: form.split_with.includes(name)
+        ? form.split_with.filter(n => n !== name)
+        : [...form.split_with, name],
+    })
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3">
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
+        <div className="flex flex-wrap gap-2">
+          {CATEGORIES.filter(c => c.id !== '정산').map(cat => (
+            <PillButton key={cat.id} label={`${cat.emoji} ${cat.id}`}
+              selected={form.category === cat.id}
+              onClick={() => setForm({ ...form, category: cat.id })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <input
+        placeholder="내용 (예: 저녁 식사)"
+        value={form.title}
+        onChange={e => setForm({ ...form, title: e.target.value })}
+        required
+        className={inputCls}
+      />
+
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">결제 수단</label>
+        <div className="flex gap-2">
+          {(['카드', '현금'] as const).map(m => (
+            <PillButton key={m} label={m === '카드' ? '💳 카드' : '💵 현금'}
+              selected={form.payment_method === m}
+              onClick={() => setForm({ ...form, payment_method: m })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">통화</label>
+        <div className="flex gap-1.5 flex-wrap">
+          {CURRENCIES.map(cur => (
+            <PillButton key={cur} label={cur}
+              selected={form.currency === cur}
+              onClick={() => setForm({ ...form, currency: cur })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <input
+          type="number"
+          placeholder="금액"
+          value={form.amount}
+          onChange={e => setForm({ ...form, amount: e.target.value })}
+          required
+          className={inputCls}
+        />
+        {form.currency !== 'KRW' && form.amount && rates['KRW'] && rates[form.currency] && (
+          <p className="text-xs text-gray-400 mt-1.5">
+            ≈ {calcKRW(Number(form.amount), form.currency, rates).toLocaleString()}원
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">결제한 사람</label>
+        <div className="flex flex-wrap gap-2">
+          {members.map(m => (
+            <PillButton key={m} label={m}
+              selected={form.paid_by === m}
+              onClick={() => setForm({ ...form, paid_by: m })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">나눌 사람</label>
+        <div className="flex flex-wrap gap-2">
+          {members.map(m => (
+            <PillButton key={m} label={m}
+              selected={form.split_with.includes(m)}
+              onClick={() => toggleSplit(m)}
+            />
+          ))}
+        </div>
+        {form.split_with.length > 0 && form.amount && (
+          <p className="text-xs text-gray-400 mt-1.5">
+            1인당 {Math.round(calcKRW(Number(form.amount), form.currency, rates) / form.split_with.length).toLocaleString()}원
+          </p>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancel} className={btn.secondary}>취소</button>
+        <button type="submit" className={btn.action}>{submitLabel}</button>
+      </div>
+    </form>
+  )
+}
+
+interface ItemProps {
+  exp: Expense
+  editingId: string | null
+  form: FormState
+  setForm: (f: FormState) => void
+  members: string[]
+  rates: Record<string, number>
+  onStartEdit: (exp: Expense) => void
+  onDelete: (id: string) => void
+  onUpdate: (e: React.FormEvent) => void
+  onCancelEdit: () => void
+}
+
+function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdit, onDelete, onUpdate, onCancelEdit }: ItemProps) {
+  if (editingId === exp.id) {
+    return (
+      <div className="bg-white rounded-xl p-4 shadow-sm">
+        <h3 className="font-bold text-gray-800 mb-3 text-sm">지출 수정</h3>
+        <ExpenseForm form={form} setForm={setForm} members={members} rates={rates}
+          onSubmit={onUpdate} submitLabel="저장" onCancel={onCancelEdit}
+        />
+      </div>
+    )
+  }
+
+  const krw = calcKRW(exp.amount, exp.currency, rates)
+
+  return (
+    <div className={`rounded-xl p-4 shadow-sm flex items-center gap-3 ${exp.category === '정산' ? 'bg-indigo-50' : 'bg-white'}`}>
+      <span className="text-2xl flex-shrink-0">{getCategoryEmoji(exp.category)}</span>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담
+          {exp.payment_method && (
+            <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>
+          )}
+          <span className="ml-1 text-gray-300">· {formatExpenseDate(exp.created_at)}</span>
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="font-semibold text-gray-800 text-sm">
+          {exp.amount.toLocaleString()} {exp.currency}
+        </p>
+        {exp.currency !== 'KRW' && rates['KRW'] && (
+          <p className="text-xs text-gray-400">≈ {krw.toLocaleString()}원</p>
+        )}
+        <p className="text-xs text-gray-400">
+          1인 {Math.round(krw / exp.split_with.length).toLocaleString()}원
+        </p>
+      </div>
+      <HamburgerMenu items={[
+        { label: '수정', onClick: () => onStartEdit(exp) },
+        { label: '삭제', onClick: () => onDelete(exp.id), danger: true },
+      ]} />
+    </div>
+  )
+}
+
+const emptyForm = (userName: string, members: string[]): FormState => ({
+  title: '', amount: '', paid_by: userName,
+  split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드',
+})
+
 export default function ExpenseTab({ tripId, userName, budget = 0, members }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [rates, setRates] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
   const [showPreSettle, setShowPreSettle] = useState(false)
   const [preFrom, setPreFrom] = useState(userName)
   const [preTo, setPreTo] = useState('')
   const [preAmount, setPreAmount] = useState('')
-
-  const [form, setForm] = useState({
-    title: '', amount: '', paid_by: userName,
-    split_with: [] as string[], category: '식비', currency: 'KRW', payment_method: '카드'
-  })
+  const [form, setForm] = useState<FormState>(emptyForm(userName, members))
 
   useEffect(() => {
     if (userName) fetchAll()
@@ -77,11 +282,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       .catch(() => {})
   }, [])
 
-  // X 외화 → KRW 변환
-  function toKRW(amount: number, currency: string): number {
-    if (currency === 'KRW') return amount
-    if (!rates['KRW'] || !rates[currency]) return amount
-    return Math.round(amount * rates['KRW'] / rates[currency])
+  function toKRW(amount: number, currency: string) {
+    return calcKRW(amount, currency, rates)
   }
 
   async function fetchAll() {
@@ -105,13 +307,13 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
     if (data) {
       setExpenses(prev => [data, ...prev])
       setShowForm(false)
-      setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' })
+      setForm(emptyForm(userName, members))
     }
   }
 
   async function updateExpense(e: React.FormEvent) {
     e.preventDefault()
-    if (!editingExpense) return
+    if (!editingId) return
     if (form.split_with.length === 0) return alert('정산할 사람을 선택해주세요')
     const { data } = await supabase
       .from('expenses')
@@ -121,16 +323,16 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
         category: form.category, currency: form.currency,
         payment_method: form.payment_method,
       })
-      .eq('id', editingExpense.id)
+      .eq('id', editingId)
       .select().single()
     if (data) {
       setExpenses(prev => prev.map(ex => ex.id === data.id ? data : ex))
-      cancelForm()
+      setEditingId(null)
     }
   }
 
-  function openEdit(exp: Expense) {
-    setEditingExpense(exp)
+  function startEdit(exp: Expense) {
+    setEditingId(exp.id)
     setShowForm(false)
     setForm({
       title: exp.title, amount: String(exp.amount),
@@ -140,15 +342,9 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
     })
   }
 
-  function cancelForm() {
-    setShowForm(false)
-    setEditingExpense(null)
-    setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' })
-  }
-
-  function formatExpenseDate(dateStr: string) {
-    const d = new Date(dateStr)
-    return `${d.getMonth() + 1}월 ${d.getDate()}일`
+  async function deleteExpense(id: string) {
+    await supabase.from('expenses').delete().eq('id', id)
+    setExpenses(prev => prev.filter(e => e.id !== id))
   }
 
   async function addPreSettlement(e: React.FormEvent) {
@@ -175,25 +371,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
     }
   }
 
-  async function deleteExpense(id: string) {
-    await supabase.from('expenses').delete().eq('id', id)
-    setExpenses(prev => prev.filter(e => e.id !== id))
-  }
-
-  function toggleSplit(name: string) {
-    setForm(f => ({
-      ...f,
-      split_with: f.split_with.includes(name)
-        ? f.split_with.filter(n => n !== name)
-        : [...f.split_with, name]
-    }))
-  }
-
   function calcBalances() {
     const paid: Record<string, number> = {}
     const owed: Record<string, number> = {}
     members.forEach(m => { paid[m] = 0; owed[m] = 0 })
-
     expenses.forEach(exp => {
       const krw = toKRW(exp.amount, exp.currency)
       const share = krw / exp.split_with.length
@@ -202,7 +383,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
         if (owed[person] !== undefined) owed[person] += share
       })
     })
-
     return members.map(m => ({
       name: m,
       paid: paid[m] ?? 0,
@@ -231,11 +411,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
   const totalKRW = expenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
   const remaining = budget > 0 ? budget - totalKRW : null
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
-
-  function getCategoryEmoji(cat: string) {
-    return CATEGORIES.find(c => c.id === cat)?.emoji ?? '💳'
-  }
-
   const balances = calcBalances()
   const settlements = calcSettlement()
 
@@ -259,110 +434,20 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       )}
 
       <button
-        onClick={() => { setEditingExpense(null); setShowForm(true); setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' }) }}
+        onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm(userName, members)) }}
         className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition text-sm"
       >
         + 지출 추가
       </button>
 
-      {(showForm || editingExpense) && (
+      {showForm && (
         <div className="bg-white rounded-2xl shadow-sm p-5">
-          <h3 className="font-bold text-gray-800 mb-4">{editingExpense ? '지출 수정' : '지출 추가'}</h3>
-          <form onSubmit={editingExpense ? updateExpense : addExpense} className="space-y-3">
-            <div>
-              <label className="text-xs text-gray-500 mb-2 block">카테고리</label>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map(cat => (
-                  <PillButton key={cat.id} label={`${cat.emoji} ${cat.id}`}
-                    selected={form.category === cat.id}
-                    onClick={() => setForm({ ...form, category: cat.id })}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <input
-              placeholder="내용 (예: 저녁 식사)"
-              value={form.title}
-              onChange={e => setForm({ ...form, title: e.target.value })}
-              required
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-            />
-
-            <div>
-              <label className="text-xs text-gray-500 mb-2 block">결제 수단</label>
-              <div className="flex gap-2">
-                {['카드', '현금'].map(m => (
-                  <PillButton key={m} label={m === '카드' ? '💳 카드' : '💵 현금'}
-                    selected={form.payment_method === m}
-                    onClick={() => setForm({ ...form, payment_method: m })}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-2 block">통화</label>
-              <div className="flex gap-1.5 flex-wrap">
-                {CURRENCIES.map(cur => (
-                  <PillButton key={cur} label={cur}
-                    selected={form.currency === cur}
-                    onClick={() => setForm({ ...form, currency: cur })}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <input
-                type="number"
-                placeholder="금액"
-                value={form.amount}
-                onChange={e => setForm({ ...form, amount: e.target.value })}
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-              />
-              {form.currency !== 'KRW' && form.amount && rates['KRW'] && rates[form.currency] && (
-                <p className="text-xs text-gray-400 mt-1.5">
-                  ≈ {toKRW(Number(form.amount), form.currency).toLocaleString()}원
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-2 block">결제한 사람</label>
-              <div className="flex flex-wrap gap-2">
-                {members.map(m => (
-                  <PillButton key={m} label={m}
-                    selected={form.paid_by === m}
-                    onClick={() => setForm({ ...form, paid_by: m })}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-2 block">나눌 사람</label>
-              <div className="flex flex-wrap gap-2">
-                {members.map(m => (
-                  <PillButton key={m} label={m}
-                    selected={form.split_with.includes(m)}
-                    onClick={() => toggleSplit(m)}
-                  />
-                ))}
-              </div>
-              {form.split_with.length > 0 && form.amount && (
-                <p className="text-xs text-gray-400 mt-1.5">
-                  1인당 {Math.round(toKRW(Number(form.amount), form.currency) / form.split_with.length).toLocaleString()}원
-                </p>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <button type="button" onClick={cancelForm} className={btn.secondary}>취소</button>
-              <button type="submit" className={btn.action}>{editingExpense ? '저장' : '추가'}</button>
-            </div>
-          </form>
+          <h3 className="font-bold text-gray-800 mb-4">지출 추가</h3>
+          <ExpenseForm
+            form={form} setForm={setForm} members={members} rates={rates}
+            onSubmit={addExpense} submitLabel="추가"
+            onCancel={() => { setShowForm(false); setForm(emptyForm(userName, members)) }}
+          />
         </div>
       )}
 
@@ -383,6 +468,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                 <span className="text-sm text-indigo-600">총 지출</span>
                 <span className="font-bold text-indigo-600">{totalKRW.toLocaleString()}원</span>
               </div>
+
               {members.length > 0 && (
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                   {members.map(m => {
@@ -431,33 +517,21 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                   })}
                 </div>
               )}
+
               {expenses.map(exp => (
-                <div key={exp.id} className={`rounded-xl p-4 shadow-sm flex items-center gap-3 ${exp.category === '정산' ? 'bg-indigo-50' : 'bg-white'}`}>
-                  <span className="text-2xl">{getCategoryEmoji(exp.category)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담
-                      {exp.payment_method && <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>}
-                      <span className="ml-1 text-gray-300">· {formatExpenseDate(exp.created_at)}</span>
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-semibold text-gray-800 text-sm">
-                      {exp.amount.toLocaleString()} {exp.currency}
-                    </p>
-                    {exp.currency !== 'KRW' && rates['KRW'] && (
-                      <p className="text-xs text-gray-400">≈ {toKRW(exp.amount, exp.currency).toLocaleString()}원</p>
-                    )}
-                    <p className="text-xs text-gray-400">
-                      1인 {Math.round(toKRW(exp.amount, exp.currency) / exp.split_with.length).toLocaleString()}원
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-0.5 shrink-0">
-                    <button onClick={() => openEdit(exp)} className="p-2 text-gray-300 hover:text-indigo-400 transition text-xs">수정</button>
-                    <button onClick={() => deleteExpense(exp.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
-                  </div>
-                </div>
+                <ExpenseItem
+                  key={exp.id}
+                  exp={exp}
+                  editingId={editingId}
+                  form={form}
+                  setForm={setForm}
+                  members={members}
+                  rates={rates}
+                  onStartEdit={startEdit}
+                  onDelete={deleteExpense}
+                  onUpdate={updateExpense}
+                  onCancelEdit={() => setEditingId(null)}
+                />
               ))}
             </>
           )}
@@ -468,7 +542,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
             <p className="text-center text-gray-400 py-8 text-sm">멤버를 추가해주세요</p>
           ) : (
             <>
-              {/* 잔액 요약 */}
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-50">
                   <p className="text-sm font-semibold text-gray-700">잔액 요약</p>
@@ -487,7 +560,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                 ))}
               </div>
 
-              {/* 선 정산 */}
               <button
                 onClick={() => setShowPreSettle(v => !v)}
                 className="w-full py-2.5 rounded-xl border border-dashed border-gray-200 text-sm text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition"
@@ -519,7 +591,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                       value={preAmount}
                       onChange={e => setPreAmount(e.target.value)}
                       required
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+                      className={inputCls}
                     />
                     <div className="flex gap-2">
                       <button type="button" onClick={() => setShowPreSettle(false)} className={btn.secondary}>취소</button>
@@ -529,7 +601,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                 </div>
               )}
 
-              {/* 이체 내역 */}
               <p className="text-xs font-semibold text-gray-400 px-1">이체 내역</p>
               {settlements.length === 0 ? (
                 <EmptyState icon="🎉" title="정산할 내용이 없어요" />
