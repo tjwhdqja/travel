@@ -493,27 +493,6 @@ export default function GuideTab({ destination }: Props) {
         ))}
       </div>
 
-      <div className="space-y-2">
-        <p className="text-xs text-gray-400 px-1">📍 {destination} · {section.emoji} {section.label}</p>
-        {items.map((item, i) => (
-          <div key={i} className="bg-white rounded-xl px-4 py-3 shadow-sm">
-            <p className="text-sm font-semibold text-gray-800">{item.name}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-            {item.tip && (
-              <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>
-            )}
-            <a
-              href={`https://maps.google.com/?q=${encodeURIComponent(item.name + ' ' + destination)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-gray-400 mt-1 flex items-center gap-1 hover:text-indigo-400 transition-colors"
-            >
-              📍 지도 보기
-            </a>
-          </div>
-        ))}
-      </div>
-
       <button
         onClick={generateAI}
         disabled={aiLoading}
@@ -539,6 +518,27 @@ export default function GuideTab({ destination }: Props) {
         onAdd={() => { setAiAdded(prev => [...prev, ...(aiResult ?? [])]); setAiResult(null) }}
         addLabel="목록에 추가"
       />
+
+      <div className="space-y-2">
+        <p className="text-xs text-gray-400 px-1">📍 {destination} · {section.emoji} {section.label}</p>
+        {items.map((item, i) => (
+          <div key={i} className="bg-white rounded-xl px-4 py-3 shadow-sm">
+            <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+            {item.tip && (
+              <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>
+            )}
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent(item.name + ' ' + destination)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 mt-1 flex items-center gap-1 hover:text-indigo-400 transition-colors"
+            >
+              📍 지도 보기
+            </a>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
