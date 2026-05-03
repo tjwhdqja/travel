@@ -474,7 +474,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
         </button>
       </div>
 
-      <div className="flex items-start overflow-x-auto scrollbar-hide py-2">
+      <div className="flex items-start justify-center overflow-x-auto scrollbar-hide py-2">
         {allDates.map((date, index) => {
           const dayNum = getDayNumber(date)
           const isSelected = selectedDate === date
