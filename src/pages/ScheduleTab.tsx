@@ -306,7 +306,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   const [aiError, setAiError] = useState('')
   const [aiStyle, setAiStyle] = useState('관광 위주')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(startDate)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
   const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
@@ -453,22 +453,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-        {allDates.map(date => {
-          const dayNum = getDayNumber(date)
-          return (
-            <button key={date}
-              onClick={() => setSelectedDate(selectedDate === date ? null : date)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 transition ${selectedDate === date ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-              Day {dayNum}
-            </button>
-          )
-        })}
-      </div>
-
       <div className="flex gap-2">
         <button
-          onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(startDate)) }}
+          onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(selectedDate ?? startDate)) }}
           className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
         >
           + 일정 추가
@@ -485,6 +472,26 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
         >
           📍 주변
         </button>
+      </div>
+
+      <div className="flex items-start overflow-x-auto scrollbar-hide py-1">
+        {allDates.map((date, index) => {
+          const dayNum = getDayNumber(date)
+          const isSelected = selectedDate === date
+          return (
+            <div key={date} className="flex items-center flex-shrink-0">
+              {index > 0 && <div className="w-6 h-px bg-gray-200 mt-[-10px]" />}
+              <button onClick={() => setSelectedDate(date)} className="flex flex-col items-center gap-1">
+                <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-xs font-bold transition ${
+                  isSelected ? 'bg-indigo-500 border-indigo-500 text-white shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-indigo-300'
+                }`}>
+                  {dayNum}
+                </div>
+                <span className={`text-[10px] font-medium ${isSelected ? 'text-indigo-500' : 'text-gray-400'}`}>Day {dayNum}</span>
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       {showAI && (
