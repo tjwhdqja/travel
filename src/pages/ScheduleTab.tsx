@@ -5,6 +5,7 @@ import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
 import AIResultPanel from '../components/AIResultPanel'
 import { btn, input as inputCls } from '../lib/design'
+import Spinner from '../components/Spinner'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -145,9 +146,9 @@ function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
                 </div>
                 <div className="flex gap-1.5 flex-shrink-0 mt-0.5">
                   <a href={`https://maps.google.com/?q=${encodeURIComponent(p.name)}`} target="_blank" rel="noopener noreferrer"
-                    className="px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs rounded-lg hover:bg-gray-200">지도</a>
+                    className="px-2.5 py-1.5 bg-gray-100 text-gray-600 text-xs rounded-xl hover:bg-gray-200">지도</a>
                   <button onClick={() => onAdd(p.name)}
-                    className="px-2.5 py-1.5 bg-indigo-500 text-white text-xs rounded-lg hover:bg-indigo-600">+ 추가</button>
+                    className="px-2.5 py-1.5 bg-indigo-500 text-white text-xs rounded-xl hover:bg-indigo-600">+ 추가</button>
                 </div>
               </div>
             ))}
@@ -522,7 +523,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
       )}
 
       {loading ? (
-        <p className="text-center text-gray-400 py-8">불러오는 중...</p>
+        <Spinner />
       ) : (
         <div className="space-y-4">
           {allDates.map(date => {
@@ -537,9 +538,12 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
                 </div>
 
                 {items.length === 0 ? (
-                  <div className="border border-dashed border-gray-200 rounded-xl px-4 py-3 text-center">
-                    <p className="text-xs text-gray-300">일정 없음</p>
-                  </div>
+                  <button
+                    onClick={() => { setShowForm(true); setEditingId(null); setShowAI(false); setShowNearby(false); setForm(emptyForm(date)) }}
+                    className="w-full border border-dashed border-gray-200 rounded-xl px-4 py-3 text-center hover:border-indigo-300 hover:bg-indigo-50 transition group"
+                  >
+                    <p className="text-xs text-gray-300 group-hover:text-indigo-400">+ 일정 추가</p>
+                  </button>
                 ) : (
                   <div>
                     {items.map((item, index) => (

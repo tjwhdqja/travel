@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Pencil } from 'lucide-react'
 import { btn } from '../lib/design'
 import HamburgerMenu from '../components/HamburgerMenu'
 import EmptyState from '../components/EmptyState'
+import Spinner from '../components/Spinner'
 
 interface Trip {
   id: string
@@ -327,7 +328,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
         )}
 
         {loading ? (
-          <p className="text-center text-gray-400 py-8">불러오는 중...</p>
+          <Spinner />
         ) : trips.length === 0 ? (
           <EmptyState icon="🗺️" title="아직 여행이 없어요" subtitle="새 여행을 만들어보세요!" />
         ) : (

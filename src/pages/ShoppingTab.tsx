@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AIResultPanel from '../components/AIResultPanel'
 import EmptyState from '../components/EmptyState'
+import Spinner from '../components/Spinner'
 import { btn } from '../lib/design'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
@@ -377,7 +378,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
 
       {/* 내 쇼핑 리스트 */}
       {loading ? (
-        <p className="text-center text-gray-400 py-8">불러오는 중...</p>
+        <Spinner />
       ) : items.length === 0 ? (
         <EmptyState icon="🛍" title="아직 쇼핑 리스트가 비어있어요" subtitle="위에서 담고 싶은 것을 추가해보세요" />
       ) : (

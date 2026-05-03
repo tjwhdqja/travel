@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PillButton from '../components/PillButton'
 import EmptyState from '../components/EmptyState'
+import Spinner from '../components/Spinner'
 import { btn } from '../lib/design'
 
 interface Expense {
@@ -299,7 +300,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       </div>
 
       {loading ? (
-        <p className="text-center text-gray-400 py-8">불러오는 중...</p>
+        <Spinner />
       ) : activeView === 'list' ? (
         <>
           {expenses.length === 0 ? (
