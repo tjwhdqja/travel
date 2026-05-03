@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import AIResultPanel from '../components/AIResultPanel'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -224,7 +225,7 @@ interface Props {
 export default function ShoppingTab({ tripId, userName, destination }: Props) {
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [aiItems, setAiItems] = useState<RecommendGroup[]>([])
+  const [aiResult, setAiResult] = useState<RecommendGroup[] | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [showRecommend, setShowRecommend] = useState(true)
 
@@ -281,12 +282,18 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
       const data = await res.json()
       const text: string = data.choices?.[0]?.message?.content ?? ''
       const match = text.match(/\[[\s\S]*\]/)
-      if (match) setAiItems(JSON.parse(match[0]) as RecommendGroup[])
+      if (match) setAiResult(JSON.parse(match[0]) as RecommendGroup[])
     } catch { /* silent */ }
     setAiLoading(false)
   }
 
-  const recommendGroups = aiItems.length > 0 ? aiItems : presetData
+  async function addAllAiItems() {
+    if (!aiResult) return
+    const allItems = aiResult.flatMap(g => g.items)
+    for (const text of allItems) await addItem(text)
+    setAiResult(null)
+  }
+
   const addedTexts = new Set(items.map(i => i.text))
   const checkedItems = items.filter(i => i.checked)
   const uncheckedItems = items.filter(i => !i.checked)
@@ -305,43 +312,57 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
 
         {showRecommend && (
           <div className="px-4 pb-4 space-y-4 border-t border-gray-50">
-            {recommendGroups ? (
-              <>
-                {recommendGroups.map(group => {
-                  const available = group.items.filter(p => !addedTexts.has(p))
-                  if (available.length === 0) return null
-                  return (
-                    <div key={group.label} className="pt-3">
-                      <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {available.map(p => (
-                          <button key={p} onClick={() => addItem(p)}
-                            className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
-                            + {p}
-                          </button>
-                        ))}
-                      </div>
+            {presetData ? (
+              presetData.map(group => {
+                const available = group.items.filter(p => !addedTexts.has(p))
+                if (available.length === 0) return null
+                return (
+                  <div key={group.label} className="pt-3">
+                    <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {available.map(p => (
+                        <button key={p} onClick={() => addItem(p)}
+                          className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
+                          + {p}
+                        </button>
+                      ))}
                     </div>
-                  )
-                })}
-                {!presetData && aiItems.length === 0 && (
-                  <p className="text-xs text-gray-400 pt-3">AI 추천을 불러와보세요</p>
-                )}
-              </>
+                  </div>
+                )
+              })
             ) : (
-              <div className="pt-3 text-center">
-                <p className="text-xs text-gray-400 mb-3">"{destination}"의 추천 정보가 없어요</p>
-              </div>
+              <p className="text-xs text-gray-400 pt-3 text-center">"{destination}"의 추천 정보가 없어요</p>
             )}
             <button
               onClick={generateAI}
               disabled={aiLoading}
               className="w-full mt-1 py-2 rounded-xl bg-indigo-500 text-white text-xs font-semibold hover:bg-indigo-600 disabled:opacity-60 transition">
-              {aiLoading ? '🤖 추천 생성 중...' : `✨ ${destination} AI 추천 받기`}
+              {`✨ ${destination} AI 추천 받기`}
             </button>
           </div>
         )}
       </div>
+
+      <AIResultPanel
+        loading={aiLoading}
+        result={aiResult && (
+          <div className="space-y-3">
+            {aiResult.map(group => (
+              <div key={group.label}>
+                <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {group.items.map(p => (
+                    <span key={p} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full">{p}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        onRetry={() => { setAiResult(null); generateAI() }}
+        onAdd={addAllAiItems}
+        addLabel="전체 쇼핑 리스트에 추가"
+      />
 
       {/* 내 쇼핑 리스트 */}
       {loading ? (

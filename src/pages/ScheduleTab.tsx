@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
+import AIResultPanel from '../components/AIResultPanel'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -211,56 +212,48 @@ function AIScheduleGenerator({ destination, startDate, endDate, onAddAll }: AIGe
     }
   }
 
+  const preview = result ? (
+    <div className="space-y-3">
+      {result.map(day => (
+        <div key={day.day}>
+          <p className="text-xs font-bold text-indigo-500 mb-1">Day {day.day} · {day.date}</p>
+          {day.schedules.map((s, i) => (
+            <div key={i} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
+              <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800">{s.title}</p>
+                {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  ) : null
+
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
       <p className="font-semibold text-sm text-gray-800">✨ AI 일정 생성</p>
-
-      {!result ? (
-        <>
-          <p className="text-xs text-gray-400">📍 {destination} · {days}일</p>
-          <div className="flex flex-wrap gap-2">
-            {STYLES.map(s => (
-              <PillButton key={s} label={s} selected={style === s} onClick={() => setStyle(s)} />
-            ))}
-          </div>
-          <button
-            onClick={generate} disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
-          >
-            {loading ? '🤖 생성 중...' : `${days}일 일정 생성`}
-          </button>
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
-        </>
-      ) : (
-        <>
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {result.map(day => (
-              <div key={day.day}>
-                <p className="text-xs font-bold text-indigo-500 mb-1">Day {day.day} · {day.date}</p>
-                {day.schedules.map((s, i) => (
-                  <div key={i} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
-                    <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-800">{s.title}</p>
-                      {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button onClick={() => setResult(null)}
-              className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-              다시 생성
-            </button>
-            <button onClick={() => onAddAll(result)}
-              className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">
-              전체 일정에 추가
-            </button>
-          </div>
-        </>
-      )}
+      <p className="text-xs text-gray-400">📍 {destination} · {days}일</p>
+      <div className="flex flex-wrap gap-2">
+        {STYLES.map(s => (
+          <PillButton key={s} label={s} selected={style === s} onClick={() => setStyle(s)} />
+        ))}
+      </div>
+      <button
+        onClick={generate} disabled={loading}
+        className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
+      >
+        {loading ? '🤖 생성 중...' : `${days}일 일정 생성`}
+      </button>
+      {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+      <AIResultPanel
+        loading={false}
+        result={preview}
+        onRetry={() => { setResult(null); generate() }}
+        onAdd={() => onAddAll(result!)}
+        addLabel="전체 일정에 추가"
+      />
     </div>
   )
 }

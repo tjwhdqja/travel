@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AIResultPanel from '../components/AIResultPanel'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -440,16 +441,16 @@ function findGuideData(destination: string): GuideData {
 
 export default function GuideTab({ destination }: Props) {
   const [activeSection, setActiveSection] = useState<SectionKey>('attractions')
-  const [aiExtra, setAiExtra] = useState<PlaceItem[]>([])
+  const [aiResult, setAiResult] = useState<PlaceItem[] | null>(null)
+  const [aiAdded, setAiAdded] = useState<PlaceItem[]>([])
   const [aiLoading, setAiLoading] = useState(false)
   const data = findGuideData(destination)
   const section = SECTIONS.find(s => s.key === activeSection)!
-  const baseItems = data[activeSection]
-  const items = [...baseItems, ...aiExtra]
+  const items = [...data[activeSection], ...aiAdded]
 
   async function generateAI() {
     setAiLoading(true)
-    setAiExtra([])
+    setAiResult(null)
     const sectionLabel = section.label
     const prompt = `${destination}의 ${sectionLabel} 중 현지인에게 유명하지만 잘 알려지지 않은 숨은 명소 3곳을 아래 JSON 형식으로만 답해 (설명 없이):
 [{"name":"장소명","desc":"한줄 설명","tip":"현지 팁 (없으면 빈 문자열)"}]`
@@ -469,7 +470,7 @@ export default function GuideTab({ destination }: Props) {
       const data = await res.json()
       const text: string = data.choices?.[0]?.message?.content ?? ''
       const match = text.match(/\[[\s\S]*\]/)
-      if (match) setAiExtra(JSON.parse(match[0]) as PlaceItem[])
+      if (match) setAiResult(JSON.parse(match[0]) as PlaceItem[])
     } catch { /* silent */ }
     setAiLoading(false)
   }
@@ -480,7 +481,7 @@ export default function GuideTab({ destination }: Props) {
         {SECTIONS.map(s => (
           <button
             key={s.key}
-            onClick={() => { setActiveSection(s.key); setAiExtra([]) }}
+            onClick={() => { setActiveSection(s.key); setAiResult(null); setAiAdded([]) }}
             className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${
               activeSection === s.key
                 ? 'bg-indigo-500 text-white'
@@ -518,8 +519,26 @@ export default function GuideTab({ destination }: Props) {
         disabled={aiLoading}
         className="w-full py-3 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
       >
-        {aiLoading ? '🤖 추천 생성 중...' : `✨ AI 숨은 명소 추천`}
+        ✨ AI 숨은 명소 추천
       </button>
+
+      <AIResultPanel
+        loading={aiLoading}
+        result={aiResult && (
+          <div className="space-y-2">
+            {aiResult.map((item, i) => (
+              <div key={i} className="py-2 border-b border-gray-50 last:border-0">
+                <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+        onRetry={() => { setAiResult(null); generateAI() }}
+        onAdd={() => { setAiAdded(prev => [...prev, ...(aiResult ?? [])]); setAiResult(null) }}
+        addLabel="목록에 추가"
+      />
     </div>
   )
 }
