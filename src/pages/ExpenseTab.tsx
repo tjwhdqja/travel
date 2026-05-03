@@ -459,23 +459,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
 
   return (
     <div className="space-y-4">
-      {budget > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">예산 사용</span>
-            <span className={remaining! < 0 ? 'text-red-500 font-bold' : 'text-gray-700 font-medium'}>
-              {totalKRW.toLocaleString()}원 / {budget.toLocaleString()}원
-            </span>
-          </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all ${budgetPct >= 100 ? 'bg-red-400' : budgetPct >= 80 ? 'bg-yellow-400' : 'bg-indigo-400'}`} style={{ width: `${budgetPct}%` }} />
-          </div>
-          <p className={`text-xs ${remaining! < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-            {remaining! < 0 ? `${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
-          </p>
-        </div>
-      )}
-
       <button
         onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm(userName, members)) }}
         className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition text-sm"
@@ -503,6 +486,23 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
         <Spinner />
       ) : activeView === 'list' ? (
         <>
+          {budget > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">예산 사용</span>
+                <span className={remaining! < 0 ? 'text-red-500 font-bold' : 'text-gray-700 font-medium'}>
+                  {totalKRW.toLocaleString()}원 / {budget.toLocaleString()}원
+                </span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${budgetPct >= 100 ? 'bg-red-400' : budgetPct >= 80 ? 'bg-yellow-400' : 'bg-indigo-400'}`} style={{ width: `${budgetPct}%` }} />
+              </div>
+              <p className={`text-xs ${remaining! < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                {remaining! < 0 ? `${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
+              </p>
+            </div>
+          )}
+
           {expenses.length === 0 ? (
             <EmptyState icon="💰" title="아직 지출이 없어요" subtitle="+ 지출 추가를 눌러보세요" />
           ) : (
