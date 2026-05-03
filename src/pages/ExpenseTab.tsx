@@ -234,8 +234,8 @@ function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdi
             )}
           </p>
         </div>
-        <div className="text-right shrink-0">
-          <p className="font-semibold text-gray-800 text-sm">
+        <div className="text-right shrink-0 max-w-[40%]">
+          <p className="font-semibold text-gray-800 text-sm break-all">
             {exp.amount.toLocaleString()} {exp.currency}
           </p>
           {exp.currency !== 'KRW' && rates['KRW'] && (
