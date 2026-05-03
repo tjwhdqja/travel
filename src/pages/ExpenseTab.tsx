@@ -54,10 +54,6 @@ function getCategoryEmoji(cat: string) {
   return CATEGORIES.find(c => c.id === cat)?.emoji ?? '💳'
 }
 
-function formatExpenseDate(dateStr: string) {
-  const d = new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr)
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`
-}
 
 function calcKRW(amount: number, currency: string, rates: Record<string, number>): number {
   if (currency === 'KRW') return amount
