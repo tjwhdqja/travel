@@ -161,7 +161,7 @@ export default function TripDetail() {
 
       <main className="max-w-lg mx-auto p-4">
         {activeTab === '일정' && <ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} destination={trip.destination} />}
-        {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} />}
+        {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} startDate={trip.start_date} />}
         {activeTab === '체크' && <ChecklistTab tripId={trip.id} userName={userName} />}
         {activeTab === '쇼핑' && <ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} />}
         {activeTab === '가이드' && <GuideTab destination={trip.destination} />}

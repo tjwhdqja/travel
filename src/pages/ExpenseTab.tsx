@@ -24,6 +24,7 @@ interface Props {
   userName: string
   budget?: number
   members: string[]
+  startDate?: string
 }
 
 type FormState = {
@@ -221,33 +222,37 @@ function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdi
   const krw = calcKRW(exp.amount, exp.currency, rates)
 
   return (
-    <div className={`rounded-xl p-4 shadow-sm flex items-center gap-3 ${exp.category === '정산' ? 'bg-indigo-50' : 'bg-white'}`}>
-      <span className="text-2xl flex-shrink-0">{getCategoryEmoji(exp.category)}</span>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담
-          {exp.payment_method && (
-            <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>
+    <div className="flex items-start gap-2">
+      <div className="w-5 flex-shrink-0 flex justify-center pt-3">
+        <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 ring-2 ring-white shadow-sm" />
+      </div>
+      <div className={`flex-1 rounded-xl px-3 py-2.5 shadow-sm flex items-center gap-2 min-w-0 ${exp.category === '정산' ? 'bg-indigo-50' : 'bg-white'}`}>
+        <span className="text-lg leading-none flex-shrink-0">{getCategoryEmoji(exp.category)}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담
+            {exp.payment_method && (
+              <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>
+            )}
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="font-semibold text-gray-800 text-sm">
+            {exp.amount.toLocaleString()} {exp.currency}
+          </p>
+          {exp.currency !== 'KRW' && rates['KRW'] && (
+            <p className="text-xs text-gray-400">≈ {krw.toLocaleString()}원</p>
           )}
-          <span className="ml-1 text-gray-300">· {formatExpenseDate(exp.date ?? exp.created_at)}</span>
-        </p>
+          <p className="text-xs text-gray-400">
+            1인 {Math.round(krw / exp.split_with.length).toLocaleString()}원
+          </p>
+        </div>
+        <HamburgerMenu items={[
+          { label: '수정', onClick: () => onStartEdit(exp) },
+          { label: '삭제', onClick: () => onDelete(exp.id), danger: true },
+        ]} />
       </div>
-      <div className="text-right shrink-0">
-        <p className="font-semibold text-gray-800 text-sm">
-          {exp.amount.toLocaleString()} {exp.currency}
-        </p>
-        {exp.currency !== 'KRW' && rates['KRW'] && (
-          <p className="text-xs text-gray-400">≈ {krw.toLocaleString()}원</p>
-        )}
-        <p className="text-xs text-gray-400">
-          1인 {Math.round(krw / exp.split_with.length).toLocaleString()}원
-        </p>
-      </div>
-      <HamburgerMenu items={[
-        { label: '수정', onClick: () => onStartEdit(exp) },
-        { label: '삭제', onClick: () => onDelete(exp.id), danger: true },
-      ]} />
     </div>
   )
 }
@@ -258,7 +263,7 @@ const emptyForm = (userName: string, members: string[]): FormState => ({
   date: new Date().toISOString().split('T')[0],
 })
 
-export default function ExpenseTab({ tripId, userName, budget = 0, members }: Props) {
+export default function ExpenseTab({ tripId, userName, budget = 0, members, startDate }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [rates, setRates] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -422,6 +427,32 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
     return result
   }
 
+  function getExpenseDate(exp: Expense) {
+    return exp.date ?? exp.created_at.split('T')[0]
+  }
+
+  function getDayNumber(dateStr: string) {
+    if (!startDate) return null
+    const diff = Math.round((new Date(dateStr + 'T00:00:00').getTime() - new Date(startDate + 'T00:00:00').getTime()) / 86400000) + 1
+    return diff >= 1 ? diff : null
+  }
+
+  function formatDateHeader(dateStr: string) {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
+  }
+
+  const groupedExpenses = (() => {
+    const sorted = [...expenses].sort((a, b) => getExpenseDate(a).localeCompare(getExpenseDate(b)))
+    const groups: { date: string; items: Expense[] }[] = []
+    sorted.forEach(exp => {
+      const date = getExpenseDate(exp)
+      const last = groups[groups.length - 1]
+      if (last?.date === date) last.items.push(exp)
+      else groups.push({ date, items: [exp] })
+    })
+    return groups
+  })()
+
   const totalKRW = expenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
   const remaining = budget > 0 ? budget - totalKRW : null
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
@@ -532,21 +563,38 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                 </div>
               )}
 
-              {expenses.map(exp => (
-                <ExpenseItem
-                  key={exp.id}
-                  exp={exp}
-                  editingId={editingId}
-                  form={form}
-                  setForm={setForm}
-                  members={members}
-                  rates={rates}
-                  onStartEdit={startEdit}
-                  onDelete={deleteExpense}
-                  onUpdate={updateExpense}
-                  onCancelEdit={() => setEditingId(null)}
-                />
-              ))}
+              {groupedExpenses.map(({ date, items }) => {
+                const dayNum = getDayNumber(date)
+                return (
+                  <div key={date}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {dayNum !== null && (
+                        <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2.5 py-1 rounded-full">
+                          Day {dayNum}
+                        </span>
+                      )}
+                      <span className="text-sm text-gray-500">{formatDateHeader(date)}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {items.map(exp => (
+                        <ExpenseItem
+                          key={exp.id}
+                          exp={exp}
+                          editingId={editingId}
+                          form={form}
+                          setForm={setForm}
+                          members={members}
+                          rates={rates}
+                          onStartEdit={startEdit}
+                          onDelete={deleteExpense}
+                          onUpdate={updateExpense}
+                          onCancelEdit={() => setEditingId(null)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
             </>
           )}
         </>
