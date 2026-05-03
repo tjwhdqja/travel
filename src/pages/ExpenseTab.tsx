@@ -197,8 +197,8 @@ interface ItemProps {
 function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdit, onDelete, onUpdate, onCancelEdit }: ItemProps) {
   if (editingId === exp.id) {
     return (
-      <div className="bg-white rounded-xl p-4 shadow-sm">
-        <h3 className="font-bold text-gray-800 mb-3 text-sm">지출 수정</h3>
+      <div className="bg-white rounded-2xl shadow-sm p-5">
+        <h3 className="font-bold text-gray-800 mb-4">지출 수정</h3>
         <ExpenseForm form={form} setForm={setForm} members={members} rates={rates}
           onSubmit={onUpdate} submitLabel="저장" onCancel={onCancelEdit}
         />

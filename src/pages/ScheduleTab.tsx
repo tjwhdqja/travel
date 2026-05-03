@@ -230,8 +230,8 @@ interface ItemProps {
 function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit }: ItemProps) {
   if (editingId === item.id) {
     return (
-      <div className="bg-white rounded-xl p-4 shadow-sm">
-        <h3 className="font-bold text-gray-800 mb-3 text-sm">일정 수정</h3>
+      <div className="bg-white rounded-2xl shadow-sm p-5">
+        <h3 className="font-bold text-gray-800 mb-4">일정 수정</h3>
         <ScheduleForm form={form} setForm={setForm}
           startDate={startDate} endDate={endDate}
           onSubmit={onUpdate} submitLabel="저장" onCancel={onCancelEdit}
