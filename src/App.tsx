@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 import LoginPage from './pages/LoginPage'
@@ -6,6 +7,7 @@ import NicknameSetupPage from './pages/NicknameSetupPage'
 import TripsPage from './pages/TripsPage'
 
 export default function App() {
+  const navigate = useNavigate()
   const [session, setSession] = useState<Session | null>(null)
   const [nickname, setNickname] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,6 +43,18 @@ export default function App() {
   }
 
   if (!session) return <LoginPage />
-  if (!nickname) return <NicknameSetupPage userId={session.user.id} onComplete={setNickname} />
+  if (!nickname) return (
+    <NicknameSetupPage
+      userId={session.user.id}
+      onComplete={(n) => {
+        setNickname(n)
+        const redirect = sessionStorage.getItem('post_nickname_redirect')
+        if (redirect) {
+          sessionStorage.removeItem('post_nickname_redirect')
+          navigate(redirect)
+        }
+      }}
+    />
+  )
   return <TripsPage nickname={nickname} onNicknameChange={setNickname} />
 }

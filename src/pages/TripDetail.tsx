@@ -85,9 +85,17 @@ export default function TripDetail() {
       setMembers(data?.map(m => m.name) ?? [])
     })
     supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) return
+      if (!user) {
+        navigate('/')
+        return
+      }
       const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single()
-      const name = profile?.nickname ?? user.email?.split('@')[0] ?? '사용자'
+      if (!profile?.nickname) {
+        sessionStorage.setItem('post_nickname_redirect', `/trip/${id}`)
+        navigate('/')
+        return
+      }
+      const name = profile.nickname
       setUserName(name)
       const { data: existing } = await supabase.from('trip_members').select('id').eq('trip_id', id).eq('name', name).maybeSingle()
       if (!existing) {

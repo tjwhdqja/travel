@@ -31,6 +31,7 @@ const CATEGORIES = [
   { id: '관광', emoji: '🎡' },
   { id: '쇼핑', emoji: '🛍' },
   { id: '기타', emoji: '💳' },
+  { id: '정산', emoji: '💸' },
 ]
 
 const CURRENCIES = ['KRW', 'JPY', 'USD', 'EUR', 'CNY', 'THB']
@@ -41,6 +42,10 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
+  const [showPreSettle, setShowPreSettle] = useState(false)
+  const [preFrom, setPreFrom] = useState(userName)
+  const [preTo, setPreTo] = useState('')
+  const [preAmount, setPreAmount] = useState('')
 
   const [form, setForm] = useState({
     title: '', amount: '', paid_by: userName,
@@ -100,6 +105,30 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       setExpenses(prev => [data, ...prev])
       setShowForm(false)
       setForm({ title: '', amount: '', paid_by: userName, split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드' })
+    }
+  }
+
+  async function addPreSettlement(e: React.FormEvent) {
+    e.preventDefault()
+    if (!preTo || preFrom === preTo) return alert('보낸 사람과 받은 사람이 달라야 합니다')
+    const { data } = await supabase
+      .from('expenses')
+      .insert([{
+        trip_id: tripId,
+        title: `${preFrom} → ${preTo} 선 정산`,
+        amount: Number(preAmount),
+        paid_by: preFrom,
+        split_with: [preTo],
+        category: '정산',
+        currency: 'KRW',
+        payment_method: '송금',
+      }])
+      .select().single()
+    if (data) {
+      setExpenses(prev => [data, ...prev])
+      setShowPreSettle(false)
+      setPreAmount('')
+      setPreTo('')
     }
   }
 
@@ -312,7 +341,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                 <span className="font-bold text-indigo-600">{totalKRW.toLocaleString()}원</span>
               </div>
               {expenses.map(exp => (
-                <div key={exp.id} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3">
+                <div key={exp.id} className={`rounded-xl p-4 shadow-sm flex items-center gap-3 ${exp.category === '정산' ? 'bg-indigo-50' : 'bg-white'}`}>
                   <span className="text-2xl">{getCategoryEmoji(exp.category)}</span>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
@@ -362,6 +391,48 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                   </div>
                 ))}
               </div>
+
+              {/* 선 정산 */}
+              <button
+                onClick={() => setShowPreSettle(v => !v)}
+                className="w-full py-2.5 rounded-xl border border-dashed border-gray-200 text-sm text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition"
+              >
+                💸 선 정산 추가
+              </button>
+              {showPreSettle && (
+                <div className="bg-white rounded-2xl shadow-sm p-4">
+                  <form onSubmit={addPreSettlement} className="space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-2 block">보낸 사람</label>
+                      <div className="flex flex-wrap gap-2">
+                        {members.map(m => (
+                          <PillButton key={m} label={m} selected={preFrom === m} onClick={() => setPreFrom(m)} />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-2 block">받은 사람</label>
+                      <div className="flex flex-wrap gap-2">
+                        {members.map(m => (
+                          <PillButton key={m} label={m} selected={preTo === m} onClick={() => setPreTo(m)} />
+                        ))}
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      placeholder="금액 (KRW)"
+                      value={preAmount}
+                      onChange={e => setPreAmount(e.target.value)}
+                      required
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setShowPreSettle(false)} className={btn.secondary}>취소</button>
+                      <button type="submit" className={btn.action}>추가</button>
+                    </div>
+                  </form>
+                </div>
+              )}
 
               {/* 이체 내역 */}
               <p className="text-xs font-semibold text-gray-400 px-1">이체 내역</p>
