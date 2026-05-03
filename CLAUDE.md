@@ -72,5 +72,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - 현재 공용 컴포넌트:
   - `HamburgerMenu` — 햄버거 아이콘 + 수정/삭제 드롭다운
   - `PillButton` — 둥근 선택 버튼 (카테고리, 멤버, 통화 등)
+  - `LocationInput` — Google Places Autocomplete 장소 검색 입력창
 - 새로운 UI를 만들 때 기존 컴포넌트와 동일하면 재사용
 - 폼 컴포넌트는 반드시 부모 컴포넌트 함수 밖에서 정의 (포커스 유실 방지)
