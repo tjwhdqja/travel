@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import PillButton from '../components/PillButton'
 import HamburgerMenu from '../components/HamburgerMenu'
@@ -266,6 +267,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
+  const [showMemberStats, setShowMemberStats] = useState(false)
   const [showPreSettle, setShowPreSettle] = useState(false)
   const [preFrom, setPreFrom] = useState(userName)
   const [preTo, setPreTo] = useState('')
@@ -505,12 +507,16 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
             <EmptyState icon="💰" title="아직 지출이 없어요" subtitle="+ 지출 추가를 눌러보세요" />
           ) : (
             <>
-              <div className="bg-indigo-50 rounded-xl px-4 py-3 flex justify-between items-center">
-                <span className="text-sm text-indigo-600">총 지출</span>
-                <span className="font-bold text-indigo-600">{totalKRW.toLocaleString()}원</span>
-              </div>
-
               {members.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setShowMemberStats(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-xl shadow-sm text-sm"
+                  >
+                    <span className="font-medium text-gray-700">사용자별 현황</span>
+                    <ChevronDown size={16} className={`text-gray-400 transition-transform ${showMemberStats ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showMemberStats && (
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                   {members.map(m => {
                     const memberExpenses = expenses.filter(e => e.paid_by === m && e.category !== '정산')
@@ -557,6 +563,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
                     )
                   })}
                 </div>
+                  )}
+                </>
               )}
 
               {groupedExpenses.map(({ date, items }) => {
