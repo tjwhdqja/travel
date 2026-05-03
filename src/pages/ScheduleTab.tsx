@@ -166,70 +166,15 @@ interface AIGeneratorProps {
   destination: string
   startDate: string
   endDate: string
-  onAddAll: (items: AIDay[]) => void
+  loading: boolean
+  error: string
+  onGenerate: (style: string) => void
 }
 
-function AIScheduleGenerator({ destination, startDate, endDate, onAddAll }: AIGeneratorProps) {
+function AIScheduleGenerator({ destination, startDate, endDate, loading, error, onGenerate }: AIGeneratorProps) {
   const [style, setStyle] = useState('관광 위주')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<AIDay[] | null>(null)
-  const [error, setError] = useState('')
-
   const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
   const STYLES = ['관광 위주', '맛집 투어', '휴양/힐링', '쇼핑 위주', '액티비티']
-
-  async function generate() {
-    if (!destination.trim()) return
-    setLoading(true); setError(''); setResult(null)
-    const prompt = `${destination} ${days}박${days - 1}일 여행 일정을 짜줘. 스타일: ${style}.
-시작일: ${startDate}, 종료일: ${endDate}.
-아래 JSON 배열 형식으로만 답해 (설명 없이):
-[{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식사|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
-하루에 4~6개 일정. category는 반드시 교통/식사/숙박/관광/쇼핑/기타 중 하나.`
-
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-        }),
-      })
-      const data = await res.json()
-      const text: string = data.choices?.[0]?.message?.content ?? ''
-      const jsonMatch = text.match(/\[[\s\S]*\]/)
-      if (!jsonMatch) throw new Error('파싱 실패')
-      setResult(JSON.parse(jsonMatch[0]) as AIDay[])
-    } catch {
-      setError('일정 생성에 실패했습니다. 다시 시도해주세요.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const preview = result ? (
-    <div className="space-y-3">
-      {result.map(day => (
-        <div key={day.day}>
-          <p className="text-xs font-bold text-indigo-500 mb-1">Day {day.day} · {day.date}</p>
-          {day.schedules.map((s, i) => (
-            <div key={i} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
-              <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-800">{s.title}</p>
-                {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  ) : null
 
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
@@ -241,19 +186,12 @@ function AIScheduleGenerator({ destination, startDate, endDate, onAddAll }: AIGe
         ))}
       </div>
       <button
-        onClick={generate} disabled={loading}
+        onClick={() => onGenerate(style)} disabled={loading}
         className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
       >
         {loading ? '🤖 생성 중...' : `${days}일 일정 생성`}
       </button>
       {error && <p className="text-xs text-red-400 text-center">{error}</p>}
-      <AIResultPanel
-        loading={false}
-        result={preview}
-        onRetry={() => { setResult(null); generate() }}
-        onAdd={() => onAddAll(result!)}
-        addLabel="전체 일정에 추가"
-      />
     </div>
   )
 }
@@ -392,6 +330,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   const [showForm, setShowForm] = useState(false)
   const [showNearby, setShowNearby] = useState(false)
   const [showAI, setShowAI] = useState(false)
+  const [aiResult, setAiResult] = useState<AIDay[] | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
@@ -461,6 +402,32 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     setForm({ date: item.date, time: item.time ?? '', title: item.title, location: item.location ?? '', note: item.note ?? '', category: item.category ?? '기타' })
   }
 
+  async function generateAI(style: string) {
+    setAiLoading(true); setAiError(''); setAiResult(null)
+    const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
+    const prompt = `${destination} ${days}박${days - 1}일 여행 일정을 짜줘. 스타일: ${style}.
+시작일: ${startDate}, 종료일: ${endDate}.
+아래 JSON 배열 형식으로만 답해 (설명 없이):
+[{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식사|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
+하루에 4~6개 일정. category는 반드시 교통/식사/숙박/관광/쇼핑/기타 중 하나.`
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_API_KEY}` },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7 }),
+      })
+      const data = await res.json()
+      const text: string = data.choices?.[0]?.message?.content ?? ''
+      const jsonMatch = text.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) throw new Error('파싱 실패')
+      setAiResult(JSON.parse(jsonMatch[0]) as AIDay[])
+    } catch {
+      setAiError('일정 생성에 실패했습니다. 다시 시도해주세요.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   async function addAllFromAI(days: AIDay[]) {
     const inserts = days.flatMap(day =>
       day.schedules.map((s, idx) => ({
@@ -475,6 +442,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     if (data) {
       setSchedules(prev => sorted([...prev, ...data]))
       setShowAI(false)
+      setAiResult(null)
     }
   }
 
@@ -531,7 +499,33 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
         </button>
       </div>
 
-      {showAI && <AIScheduleGenerator destination={destination} startDate={startDate} endDate={endDate} onAddAll={addAllFromAI} />}
+      {showAI && <AIScheduleGenerator destination={destination} startDate={startDate} endDate={endDate} loading={aiLoading} error={aiError} onGenerate={generateAI} />}
+      {showAI && (
+        <AIResultPanel
+          loading={aiLoading}
+          result={aiResult && (
+            <div className="space-y-3">
+              {aiResult.map(day => (
+                <div key={day.day}>
+                  <p className="text-xs font-bold text-indigo-500 mb-1">Day {day.day} · {day.date}</p>
+                  {day.schedules.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                      <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-800">{s.title}</p>
+                        {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          onRetry={() => { setAiResult(null) }}
+          onAdd={() => addAllFromAI(aiResult!)}
+          addLabel="전체 일정에 추가"
+        />
+      )}
       {showNearby && <NearbyRecommendations onAdd={addFromNearby} />}
 
       {showForm && (
