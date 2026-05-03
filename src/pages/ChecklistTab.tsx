@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import EmptyState from '../components/EmptyState'
 
 interface CheckItem {
   id: string
@@ -141,10 +142,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
       {loading ? (
         <p className="text-center text-gray-400 py-8">불러오는 중...</p>
       ) : items.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <div className="text-5xl mb-3">✅</div>
-          <p>준비물을 추가해보세요</p>
-        </div>
+        <EmptyState icon="✅" title="준비물을 추가해보세요" subtitle="또는 추천 준비물 보기를 눌러보세요" />
       ) : (
         <>
           {items.length > 0 && (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AIResultPanel from '../components/AIResultPanel'
+import EmptyState from '../components/EmptyState'
 import { btn } from '../lib/design'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
@@ -378,10 +379,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
       {loading ? (
         <p className="text-center text-gray-400 py-8">불러오는 중...</p>
       ) : items.length === 0 ? (
-        <div className="text-center py-10 text-gray-400">
-          <div className="text-4xl mb-2">🛍</div>
-          <p className="text-sm">위에서 담고 싶은 것을 추가해보세요</p>
-        </div>
+        <EmptyState icon="🛍" title="아직 쇼핑 리스트가 비어있어요" subtitle="위에서 담고 싶은 것을 추가해보세요" />
       ) : (
         <>
           <div className="flex items-center justify-between px-1">

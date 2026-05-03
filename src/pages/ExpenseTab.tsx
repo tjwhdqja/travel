@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PillButton from '../components/PillButton'
+import EmptyState from '../components/EmptyState'
 import { btn } from '../lib/design'
 
 interface Expense {
@@ -302,10 +303,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       ) : activeView === 'list' ? (
         <>
           {expenses.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
-              <div className="text-5xl mb-3">💰</div>
-              <p>아직 지출이 없어요</p>
-            </div>
+            <EmptyState icon="💰" title="아직 지출이 없어요" subtitle="+ 지출 추가를 눌러보세요" />
           ) : (
             <>
               <div className="bg-indigo-50 rounded-xl px-4 py-3 flex justify-between items-center">
@@ -367,10 +365,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
               {/* 이체 내역 */}
               <p className="text-xs font-semibold text-gray-400 px-1">이체 내역</p>
               {settlements.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <div className="text-4xl mb-2">🎉</div>
-                  <p className="text-sm">정산할 내용이 없어요</p>
-                </div>
+                <EmptyState icon="🎉" title="정산할 내용이 없어요" />
               ) : (
                 settlements.map((s, i) => (
                   <div key={i} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3">

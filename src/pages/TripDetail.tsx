@@ -112,14 +112,17 @@ export default function TripDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100 px-4 pt-4 pb-3">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-indigo-500 text-sm mb-1 -ml-1 px-1 py-2">
-          <ChevronLeft size={18} />
+      <header className="bg-white border-b border-gray-100 px-4 pt-3 pb-3">
+        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-indigo-500 text-sm -ml-1 px-1 py-1.5 mb-1.5">
+          <ChevronLeft size={16} />
           뒤로
         </button>
-        <h1 className="text-xl font-bold text-gray-800">{trip.name}</h1>
-        <p className="text-sm text-gray-400 mb-3">📍 {trip.destination}</p>
-
+        <div className="flex items-start gap-2 mb-2.5">
+          <h1 className="text-lg font-bold text-gray-800 flex-1 min-w-0">{trip.name}</h1>
+          <span className="flex-shrink-0 mt-0.5 text-xs font-medium text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
+            {trip.destination}
+          </span>
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           {members.map((m, i) => (
             <div key={m} className="flex items-center gap-1.5">
