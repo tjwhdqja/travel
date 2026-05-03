@@ -474,13 +474,13 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
         </button>
       </div>
 
-      <div className="flex items-start justify-center overflow-x-auto scrollbar-hide py-2">
+      <div className="flex items-start w-full py-2">
         {allDates.map((date, index) => {
           const dayNum = getDayNumber(date)
           const isSelected = selectedDate === date
           return (
             <Fragment key={date}>
-              {index > 0 && <div className="w-8 h-px bg-gray-200 mt-[18px] flex-shrink-0" />}
+              {index > 0 && <div className="flex-1 h-px bg-gray-200 mt-[18px]" />}
               <button onClick={() => setSelectedDate(date)} className="flex flex-col items-center gap-1 p-0 flex-shrink-0">
                 <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-xs font-bold transition ${
                   isSelected ? 'bg-indigo-500 border-indigo-500 text-white shadow-md' : 'bg-white border-gray-200 text-gray-400 hover:border-indigo-300'
