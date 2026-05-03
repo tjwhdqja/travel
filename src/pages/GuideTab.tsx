@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
+
 interface PlaceItem {
   name: string
   desc: string
@@ -438,9 +440,39 @@ function findGuideData(destination: string): GuideData {
 
 export default function GuideTab({ destination }: Props) {
   const [activeSection, setActiveSection] = useState<SectionKey>('attractions')
+  const [aiExtra, setAiExtra] = useState<PlaceItem[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
   const data = findGuideData(destination)
   const section = SECTIONS.find(s => s.key === activeSection)!
-  const items = data[activeSection]
+  const baseItems = data[activeSection]
+  const items = [...baseItems, ...aiExtra]
+
+  async function generateAI() {
+    setAiLoading(true)
+    setAiExtra([])
+    const sectionLabel = section.label
+    const prompt = `${destination}의 ${sectionLabel} 중 현지인에게 유명하지만 잘 알려지지 않은 숨은 명소 3곳을 아래 JSON 형식으로만 답해 (설명 없이):
+[{"name":"장소명","desc":"한줄 설명","tip":"현지 팁 (없으면 빈 문자열)"}]`
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+        }),
+      })
+      const data = await res.json()
+      const text: string = data.choices?.[0]?.message?.content ?? ''
+      const match = text.match(/\[[\s\S]*\]/)
+      if (match) setAiExtra(JSON.parse(match[0]) as PlaceItem[])
+    } catch { /* silent */ }
+    setAiLoading(false)
+  }
 
   return (
     <div className="space-y-4">
@@ -448,7 +480,7 @@ export default function GuideTab({ destination }: Props) {
         {SECTIONS.map(s => (
           <button
             key={s.key}
-            onClick={() => setActiveSection(s.key)}
+            onClick={() => { setActiveSection(s.key); setAiExtra([]) }}
             className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${
               activeSection === s.key
                 ? 'bg-indigo-500 text-white'
@@ -482,10 +514,11 @@ export default function GuideTab({ destination }: Props) {
       </div>
 
       <button
-        disabled
-        className="w-full py-3 rounded-xl bg-gray-100 text-gray-400 text-sm font-semibold cursor-not-allowed"
+        onClick={generateAI}
+        disabled={aiLoading}
+        className="w-full py-3 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
       >
-        ✨ AI 맞춤 추천 (준비 중)
+        {aiLoading ? '🤖 추천 생성 중...' : `✨ AI 숨은 명소 추천`}
       </button>
     </div>
   )

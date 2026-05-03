@@ -4,7 +4,7 @@ import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
 interface Schedule {
   id: string
@@ -187,16 +187,20 @@ function AIScheduleGenerator({ destination, startDate, endDate, onAddAll }: AIGe
 하루에 4~6개 일정. category는 반드시 교통/식사/숙박/관광/쇼핑/기타 중 하나.`
 
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        }
-      )
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+        }),
+      })
       const data = await res.json()
-      const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      const text: string = data.choices?.[0]?.message?.content ?? ''
       const jsonMatch = text.match(/\[[\s\S]*\]/)
       if (!jsonMatch) throw new Error('파싱 실패')
       setResult(JSON.parse(jsonMatch[0]) as AIDay[])
@@ -521,10 +525,10 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
           + 일정 추가
         </button>
         <button
-          disabled
-          className="px-4 py-3 rounded-xl font-medium text-sm border bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+          onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false) }}
+          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
         >
-          ✨ 준비 중
+          ✨ AI
         </button>
         <button
           onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false) }}

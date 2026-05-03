@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
+
 
 interface ShopItem {
   id: string
@@ -222,7 +224,8 @@ interface Props {
 export default function ShoppingTab({ tripId, userName, destination }: Props) {
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [aiItems] = useState<RecommendGroup[]>([])
+  const [aiItems, setAiItems] = useState<RecommendGroup[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
   const [showRecommend, setShowRecommend] = useState(true)
 
   const presetData = SHOPPING_DATA[destination] ?? null
@@ -255,6 +258,32 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
   async function deleteItem(id: string) {
     await supabase.from('checklists').delete().eq('id', id)
     setItems(prev => prev.filter(i => i.id !== id))
+  }
+
+  async function generateAI() {
+    setAiLoading(true)
+    const prompt = `${destination} 여행 시 사오기 좋은 특산품, 기념품, 현지 간식 추천을 아래 JSON 형식으로만 답해 (설명 없이):
+[{"label":"🍬 간식·식품","items":["아이템1","아이템2"]},{"label":"🛍 패션·뷰티","items":[]},{"label":"🎁 기념품","items":["아이템1"]}]
+각 카테고리 5개 이내, 없는 카테고리는 제외`
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+        }),
+      })
+      const data = await res.json()
+      const text: string = data.choices?.[0]?.message?.content ?? ''
+      const match = text.match(/\[[\s\S]*\]/)
+      if (match) setAiItems(JSON.parse(match[0]) as RecommendGroup[])
+    } catch { /* silent */ }
+    setAiLoading(false)
   }
 
   const recommendGroups = aiItems.length > 0 ? aiItems : presetData
@@ -304,9 +333,11 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
                 <p className="text-xs text-gray-400 mb-3">"{destination}"의 추천 정보가 없어요</p>
               </div>
             )}
-            <button disabled
-              className="w-full mt-1 py-2 rounded-xl bg-gray-100 text-gray-400 text-xs font-semibold cursor-not-allowed">
-              ✨ AI 추천 (준비 중)
+            <button
+              onClick={generateAI}
+              disabled={aiLoading}
+              className="w-full mt-1 py-2 rounded-xl bg-indigo-500 text-white text-xs font-semibold hover:bg-indigo-600 disabled:opacity-60 transition">
+              {aiLoading ? '🤖 추천 생성 중...' : `✨ ${destination} AI 추천 받기`}
             </button>
           </div>
         )}
