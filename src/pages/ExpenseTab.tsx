@@ -343,27 +343,46 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
               {members.length > 0 && (
                 <div className="bg-white rounded-xl shadow-sm overflow-hidden">
                   {members.map(m => {
-                    const memberPaid = expenses
-                      .filter(e => e.paid_by === m && e.category !== '정산')
-                      .reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
-                    const expenseTotal = expenses
-                      .filter(e => e.category !== '정산')
-                      .reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+                    const memberExpenses = expenses.filter(e => e.paid_by === m && e.category !== '정산')
+                    const memberPaid = memberExpenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+                    const expenseTotal = expenses.filter(e => e.category !== '정산').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
                     const pct = expenseTotal > 0 ? (memberPaid / expenseTotal) * 100 : 0
+                    const cardTotal = memberExpenses.filter(e => e.payment_method === '카드').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+                    const cashTotal = memberExpenses.filter(e => e.payment_method === '현금').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+                    const byCurrency: Record<string, number> = {}
+                    memberExpenses.forEach(e => { byCurrency[e.currency] = (byCurrency[e.currency] ?? 0) + e.amount })
                     return (
-                      <div key={m} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0 gap-3">
-                        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold shrink-0">
-                          {m.slice(0, 1)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between mb-1.5">
-                            <span className="text-sm font-medium text-gray-700">{m}</span>
-                            <span className="text-sm font-semibold text-gray-800">{memberPaid.toLocaleString()}원</span>
+                      <div key={m} className="px-4 py-3 border-b border-gray-50 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold shrink-0">
+                            {m.slice(0, 1)}
                           </div>
-                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between mb-1.5">
+                              <span className="text-sm font-medium text-gray-700">{m}</span>
+                              <span className="text-sm font-semibold text-gray-800">{memberPaid.toLocaleString()}원</span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                            </div>
                           </div>
                         </div>
+                        {memberPaid > 0 && (
+                          <div className="ml-10 mt-2 space-y-1">
+                            <div className="flex gap-3 flex-wrap">
+                              {cardTotal > 0 && <span className="text-xs text-gray-400">💳 {cardTotal.toLocaleString()}원</span>}
+                              {cashTotal > 0 && <span className="text-xs text-gray-400">💵 {cashTotal.toLocaleString()}원</span>}
+                            </div>
+                            <div className="flex gap-3 flex-wrap">
+                              {Object.entries(byCurrency).map(([cur, amt]) => (
+                                <span key={cur} className="text-xs text-gray-400">
+                                  {cur} {amt.toLocaleString()}
+                                  {cur !== 'KRW' && <span className="text-gray-300"> ≈{toKRW(amt, cur).toLocaleString()}원</span>}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
