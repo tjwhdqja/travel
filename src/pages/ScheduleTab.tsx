@@ -306,6 +306,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   const [aiError, setAiError] = useState('')
   const [aiStyle, setAiStyle] = useState('관광 위주')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
 
   const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
@@ -448,9 +449,23 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   }, {})
 
   const allDates = getAllDates(startDate, endDate)
+  const filteredDates = selectedDate ? [selectedDate] : allDates
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+        {allDates.map(date => {
+          const dayNum = getDayNumber(date)
+          return (
+            <button key={date}
+              onClick={() => setSelectedDate(selectedDate === date ? null : date)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium flex-shrink-0 transition ${selectedDate === date ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              Day {dayNum}
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex gap-2">
         <button
           onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(startDate)) }}
@@ -526,7 +541,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
         <Spinner />
       ) : (
         <div className="space-y-4">
-          {allDates.map(date => {
+          {filteredDates.map(date => {
             const items = grouped[date] ?? []
             return (
               <div key={date}>

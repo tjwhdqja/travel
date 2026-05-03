@@ -438,7 +438,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
   }
 
   const groupedExpenses = (() => {
-    const sorted = [...expenses].sort((a, b) => getExpenseDate(a).localeCompare(getExpenseDate(b)))
+    const sorted = [...expenses].sort((a, b) => getExpenseDate(b).localeCompare(getExpenseDate(a)))
     const groups: { date: string; items: Expense[] }[] = []
     sorted.forEach(exp => {
       const date = getExpenseDate(exp)
