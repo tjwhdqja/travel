@@ -10,44 +10,45 @@ export default function NicknameSetupPage({ userId, onComplete }: Props) {
   const [nickname, setNickname] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const canSubmit = nickname.trim().length > 0 && !loading
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!nickname.trim()) return
+    if (!canSubmit) return
     setLoading(true)
-
     const { error } = await supabase
       .from('profiles')
       .insert([{ id: userId, nickname: nickname.trim() }])
-
-    if (!error) {
-      onComplete(nickname.trim())
-    }
+    if (!error) onComplete(nickname.trim())
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-6">
+      <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-4xl mb-3">👋</div>
-          <h1 className="text-2xl font-bold text-gray-800">처음 오셨군요!</h1>
-          <p className="text-gray-500 text-sm mt-1">앱에서 사용할 닉네임을 입력해주세요</p>
+          <div className="text-5xl mb-4">👋</div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">처음 오셨군요!</h1>
+          <p className="text-sm text-gray-400">여행 앱에서 사용할 닉네임을 정해주세요</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <input
-            placeholder="닉네임 입력 (예: 종범)"
+            placeholder="닉네임 입력"
             value={nickname}
             onChange={e => setNickname(e.target.value)}
-            required
             maxLength={10}
             autoFocus
             className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 text-center text-lg"
           />
           <button
             type="submit"
-            disabled={loading || !nickname.trim()}
-            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50"
+            disabled={!canSubmit}
+            className={`w-full py-3 rounded-xl text-sm font-semibold transition ${
+              canSubmit
+                ? 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            }`}
           >
             {loading ? '저장 중...' : '시작하기'}
           </button>
