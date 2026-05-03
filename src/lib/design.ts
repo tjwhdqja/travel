@@ -4,6 +4,7 @@ export const textarea = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 fo
 
 export const btn = {
   primary: 'w-full py-3 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition',
+  action: 'flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition',
   secondary: 'flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition',
   danger: 'p-2 text-gray-300 hover:text-red-400 transition',
   // 상단 토글 버튼

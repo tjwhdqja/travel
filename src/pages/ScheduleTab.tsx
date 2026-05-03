@@ -4,7 +4,7 @@ import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
 import AIResultPanel from '../components/AIResultPanel'
-import { btn } from '../lib/design'
+import { btn, input as inputCls } from '../lib/design'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -185,14 +185,14 @@ function ScheduleForm({ form, setForm, startDate, endDate, onSubmit, submitLabel
           <label className="text-xs text-gray-500 mb-1 block">날짜</label>
           <input type="date" value={form.date} min={startDate} max={endDate}
             onChange={e => setForm({ ...form, date: e.target.value })} required
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+            className={inputCls}
           />
         </div>
         <div className="flex-1">
           <label className="text-xs text-gray-500 mb-1 block">시간 (선택)</label>
           <input type="time" value={form.time}
             onChange={e => setForm({ ...form, time: e.target.value })}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+            className={inputCls}
           />
         </div>
       </div>
@@ -206,8 +206,8 @@ function ScheduleForm({ form, setForm, startDate, endDate, onSubmit, submitLabel
         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm resize-none"
       />
       <div className="flex gap-2">
-        <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
-        <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">{submitLabel}</button>
+        <button type="button" onClick={onCancel} className={btn.secondary}>취소</button>
+        <button type="submit" className={btn.action}>{submitLabel}</button>
       </div>
     </form>
   )

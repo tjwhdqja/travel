@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ChevronDown, ChevronUp, Pencil } from 'lucide-react'
+import { btn } from '../lib/design'
 import HamburgerMenu from '../components/HamburgerMenu'
 
 interface Trip {
@@ -120,8 +121,8 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">취소</button>
-          <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600">{submitLabel}</button>
+          <button type="button" onClick={onCancel} className={btn.secondary}>취소</button>
+          <button type="submit" className={btn.action}>{submitLabel}</button>
         </div>
       </form>
     </div>
@@ -302,8 +303,8 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm mb-3"
             />
             <div className="flex gap-2">
-              <button onClick={() => setEditingNickname(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">취소</button>
-              <button onClick={saveNickname} className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold">저장</button>
+              <button onClick={() => setEditingNickname(false)} className={btn.secondary}>취소</button>
+              <button onClick={saveNickname} className={btn.action}>저장</button>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import PillButton from '../components/PillButton'
+import { btn } from '../lib/design'
 
 interface Expense {
   id: string
@@ -284,8 +285,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
             </div>
 
             <div className="flex gap-2">
-              <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600">취소</button>
-              <button type="submit" className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold">추가</button>
+              <button type="button" onClick={() => setShowForm(false)} className={btn.secondary}>취소</button>
+              <button type="submit" className={btn.action}>추가</button>
             </div>
           </form>
         </div>
