@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AIResultPanel from '../components/AIResultPanel'
+import { btn } from '../lib/design'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -306,36 +307,24 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
       <div className="flex gap-2">
         <button
           onClick={() => setShowRecommend(v => !v)}
-          className={`flex-1 py-3 rounded-xl font-semibold text-sm transition border ${showRecommend ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+          className={`flex-1 ${btn.toggle(showRecommend)}`}
         >
           🛒 쇼핑 추천
         </button>
         <button
           onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+          className={btn.ai(showAI)}
         >
           ✨ AI
         </button>
       </div>
 
-      {/* AI 옵션 카드 */}
-      {showAI && (
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-          <p className="font-semibold text-sm text-gray-800">✨ AI 쇼핑 추천</p>
-          <p className="text-xs text-gray-400">📍 {destination} · 현지 특산품·기념품 추천</p>
-          <button
-            onClick={generateAI} disabled={aiLoading}
-            className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
-          >
-            {aiLoading ? '🤖 생성 중...' : 'AI 추천 받기'}
-          </button>
-          {aiError && <p className="text-xs text-red-400 text-center">{aiError}</p>}
-        </div>
-      )}
-
-      {/* AI 결과 패널 */}
       {showAI && (
         <AIResultPanel
+          title="AI 쇼핑 추천"
+          subtitle={`${destination} · 현지 특산품·기념품 추천`}
+          generateLabel="AI 추천 받기"
+          onGenerate={generateAI}
           loading={aiLoading}
           result={aiResult && (
             <div className="space-y-3">
@@ -351,7 +340,8 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
               ))}
             </div>
           )}
-          onRetry={() => { setAiResult(null); generateAI() }}
+          error={aiError}
+          onRetry={() => { setAiResult(null) }}
           onAdd={addAllAiItems}
           addLabel="전체 쇼핑 리스트에 추가"
         />
@@ -404,7 +394,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
                 <button onClick={() => toggleItem(item)}
                   className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
                 <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-400 text-xs">삭제</button>
+                <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
               </div>
             ))}
           </div>
@@ -418,7 +408,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
                     <span className="text-white text-xs">✓</span>
                   </button>
                   <span className="flex-1 text-sm text-gray-400 line-through">{item.text}</span>
-                  <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-400 text-xs">삭제</button>
+                  <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
                 </div>
               ))}
             </div>

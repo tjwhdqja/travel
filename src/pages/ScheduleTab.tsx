@@ -4,6 +4,7 @@ import HamburgerMenu from '../components/HamburgerMenu'
 import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
 import AIResultPanel from '../components/AIResultPanel'
+import { btn } from '../lib/design'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -38,6 +39,8 @@ const CATEGORIES = [
   { id: '쇼핑', emoji: '🛍' },
   { id: '기타', emoji: '📌' },
 ]
+
+const AI_STYLES = ['관광 위주', '맛집 투어', '휴양/힐링', '쇼핑 위주', '액티비티']
 
 function getCategoryEmoji(category: string) {
   return CATEGORIES.find(c => c.id === category)?.emoji ?? '📌'
@@ -162,39 +165,6 @@ function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
 interface AISchedule { time: string; title: string; location: string; category: string; note: string }
 interface AIDay { day: number; date: string; schedules: AISchedule[] }
 
-interface AIGeneratorProps {
-  destination: string
-  startDate: string
-  endDate: string
-  loading: boolean
-  error: string
-  onGenerate: (style: string) => void
-}
-
-function AIScheduleGenerator({ destination, startDate, endDate, loading, error, onGenerate }: AIGeneratorProps) {
-  const [style, setStyle] = useState('관광 위주')
-  const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
-  const STYLES = ['관광 위주', '맛집 투어', '휴양/힐링', '쇼핑 위주', '액티비티']
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-      <p className="font-semibold text-sm text-gray-800">✨ AI 일정 생성</p>
-      <p className="text-xs text-gray-400">📍 {destination} · {days}일</p>
-      <div className="flex flex-wrap gap-2">
-        {STYLES.map(s => (
-          <PillButton key={s} label={s} selected={style === s} onClick={() => setStyle(s)} />
-        ))}
-      </div>
-      <button
-        onClick={() => onGenerate(style)} disabled={loading}
-        className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
-      >
-        {loading ? '🤖 생성 중...' : `${days}일 일정 생성`}
-      </button>
-      {error && <p className="text-xs text-red-400 text-center">{error}</p>}
-    </div>
-  )
-}
 
 function ScheduleForm({ form, setForm, startDate, endDate, onSubmit, submitLabel, onCancel }: FormProps) {
   return (
@@ -333,8 +303,11 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   const [aiResult, setAiResult] = useState<AIDay[] | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  const [aiStyle, setAiStyle] = useState('관광 위주')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
+
+  const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
 
   useEffect(() => {
     if (userName) fetchAll()
@@ -402,10 +375,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     setForm({ date: item.date, time: item.time ?? '', title: item.title, location: item.location ?? '', note: item.note ?? '', category: item.category ?? '기타' })
   }
 
-  async function generateAI(style: string) {
+  async function generateAI() {
     setAiLoading(true); setAiError(''); setAiResult(null)
-    const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
-    const prompt = `${destination} ${days}박${days - 1}일 여행 일정을 짜줘. 스타일: ${style}.
+    const prompt = `${destination} ${days}박${days - 1}일 여행 일정을 짜줘. 스타일: ${aiStyle}.
 시작일: ${startDate}, 종료일: ${endDate}.
 아래 JSON 배열 형식으로만 답해 (설명 없이):
 [{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식사|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
@@ -487,21 +459,31 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
         </button>
         <button
           onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false) }}
-          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+          className={btn.ai(showAI)}
         >
           ✨ AI
         </button>
         <button
           onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false) }}
-          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showNearby ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+          className={btn.toggle(showNearby)}
         >
           📍 주변
         </button>
       </div>
 
-      {showAI && <AIScheduleGenerator destination={destination} startDate={startDate} endDate={endDate} loading={aiLoading} error={aiError} onGenerate={generateAI} />}
       {showAI && (
         <AIResultPanel
+          title="AI 일정 생성"
+          subtitle={`${destination} · ${days}일`}
+          options={
+            <div className="flex flex-wrap gap-2">
+              {AI_STYLES.map(s => (
+                <PillButton key={s} label={s} selected={aiStyle === s} onClick={() => setAiStyle(s)} />
+              ))}
+            </div>
+          }
+          generateLabel={`${days}일 일정 생성`}
+          onGenerate={generateAI}
           loading={aiLoading}
           result={aiResult && (
             <div className="space-y-3">
@@ -521,6 +503,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
               ))}
             </div>
           )}
+          error={aiError}
           onRetry={() => { setAiResult(null) }}
           onAdd={() => addAllFromAI(aiResult!)}
           addLabel="전체 일정에 추가"

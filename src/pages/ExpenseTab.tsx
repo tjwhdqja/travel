@@ -332,7 +332,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
                       1인 {Math.round(toKRW(exp.amount, exp.currency) / exp.split_with.length).toLocaleString()}원
                     </p>
                   </div>
-                  <button onClick={() => deleteExpense(exp.id)} className="text-gray-300 hover:text-red-400 text-xs ml-1">삭제</button>
+                  <button onClick={() => deleteExpense(exp.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
                 </div>
               ))}
             </>

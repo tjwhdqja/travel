@@ -161,7 +161,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
               <div key={item.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3">
                 <button onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
                 <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-400 text-xs">삭제</button>
+                <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
               </div>
             ))}
           </div>
@@ -175,7 +175,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
                     <span className="text-white text-xs">✓</span>
                   </button>
                   <span className="flex-1 text-sm text-gray-400 line-through">{item.text}</span>
-                  <button onClick={() => deleteItem(item.id)} className="text-gray-300 hover:text-red-400 text-xs">삭제</button>
+                  <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
                 </div>
               ))}
             </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { ChevronLeft, Calendar, Wallet, CheckSquare, ShoppingBag, Map } from 'lucide-react'
 import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
 import ChecklistTab from './ChecklistTab'
@@ -18,12 +19,12 @@ interface Trip {
 
 type Tab = '일정' | '경비' | '체크' | '쇼핑' | '가이드'
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: '일정', label: '🗓 일정' },
-  { id: '경비', label: '💰 경비' },
-  { id: '체크', label: '✅ 체크' },
-  { id: '쇼핑', label: '🛍 쇼핑' },
-  { id: '가이드', label: '🗺 가이드' },
+const TABS: { id: Tab; icon: React.ComponentType<{ size?: number; className?: string }>; label: string }[] = [
+  { id: '일정', icon: Calendar, label: '일정' },
+  { id: '경비', icon: Wallet, label: '경비' },
+  { id: '체크', icon: CheckSquare, label: '체크' },
+  { id: '쇼핑', icon: ShoppingBag, label: '쇼핑' },
+  { id: '가이드', icon: Map, label: '가이드' },
 ]
 
 function getInitial(name: string) {
@@ -112,7 +113,10 @@ export default function TripDetail() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 px-4 pt-4 pb-3">
-        <button onClick={() => navigate('/')} className="text-indigo-500 text-sm mb-2">← 뒤로</button>
+        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-indigo-500 text-sm mb-1 -ml-1 px-1 py-2">
+          <ChevronLeft size={18} />
+          뒤로
+        </button>
         <h1 className="text-xl font-bold text-gray-800">{trip.name}</h1>
         <p className="text-sm text-gray-400 mb-3">📍 {trip.destination}</p>
 
@@ -134,11 +138,12 @@ export default function TripDetail() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 py-3 text-sm font-medium transition ${
+            className={`flex-1 py-2.5 flex flex-col items-center gap-1 transition ${
               activeTab === tab.id ? 'text-indigo-500 border-b-2 border-indigo-500' : 'text-gray-400'
             }`}
           >
-            {tab.label}
+            <tab.icon size={16} />
+            <span className="text-[11px] font-medium">{tab.label}</span>
           </button>
         ))}
       </div>

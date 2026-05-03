@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { ChevronDown, ChevronUp, Pencil } from 'lucide-react'
 import HamburgerMenu from '../components/HamburgerMenu'
 
 interface Trip {
@@ -265,16 +266,17 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
               {nickname.slice(0, 1)}
             </div>
             <span className="text-sm text-gray-700 font-medium">{nickname}</span>
-            <span className="text-gray-300 text-xs">{showUserMenu ? '▲' : '▼'}</span>
+            {showUserMenu ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
           </button>
 
           {showUserMenu && (
             <div className="absolute right-0 top-11 z-20 bg-white rounded-xl shadow-lg border border-gray-100 w-36 overflow-hidden">
               <button
                 onClick={() => { setNicknameInput(nickname); setEditingNickname(true); setShowUserMenu(false) }}
-                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition flex items-center gap-2"
               >
-                ✏️ 닉네임 수정
+                <Pencil size={13} />
+                닉네임 수정
               </button>
               <button
                 onClick={() => supabase.auth.signOut()}
@@ -335,13 +337,17 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
             const status = getStatus(trip)
             const dday = getDday(trip)
             return (
-              <div key={trip.id} className="bg-white rounded-2xl shadow-sm p-5 hover:shadow-md transition">
+              <div
+                key={trip.id}
+                className="bg-white rounded-2xl shadow-sm p-5 hover:shadow-md transition cursor-pointer"
+                onClick={() => navigate(`/trip/${trip.id}`)}
+              >
                 <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-wrap flex-1 cursor-pointer" onClick={() => navigate(`/trip/${trip.id}`)}>
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
                     <h3 className="font-bold text-gray-800">{trip.name}</h3>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
                   </div>
-                  <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <div className="flex items-center gap-2 ml-2 shrink-0" onClick={e => e.stopPropagation()}>
                     <span className="text-indigo-500 text-sm font-bold">{dday}</span>
                     {trip.created_by === nickname && (
                       <HamburgerMenu items={[
@@ -351,11 +357,9 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                     )}
                   </div>
                 </div>
-                <div className="cursor-pointer" onClick={() => navigate(`/trip/${trip.id}`)}>
-                  <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
-                  <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}</p>
-                  {trip.budget > 0 && <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>}
-                </div>
+                <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
+                <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}</p>
+                {trip.budget > 0 && <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>}
               </div>
             )
           })
