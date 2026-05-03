@@ -15,6 +15,7 @@ interface Expense {
   category: string
   currency: string
   payment_method: string
+  date: string | null
   created_at: string
 }
 
@@ -33,6 +34,7 @@ type FormState = {
   category: string
   currency: string
   payment_method: string
+  date: string
 }
 
 const CATEGORIES = [
@@ -52,7 +54,7 @@ function getCategoryEmoji(cat: string) {
 }
 
 function formatExpenseDate(dateStr: string) {
-  const d = new Date(dateStr)
+  const d = new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr)
   return `${d.getMonth() + 1}월 ${d.getDate()}일`
 }
 
@@ -104,39 +106,49 @@ function ExpenseForm({ form, setForm, members, rates, onSubmit, submitLabel, onC
         className={inputCls}
       />
 
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="text-xs text-gray-500 mb-1 block">날짜</label>
+          <input
+            type="date"
+            value={form.date}
+            onChange={e => setForm({ ...form, date: e.target.value })}
+            required
+            className={inputCls}
+          />
+        </div>
+        <div className="flex-1">
+          <label className="text-xs text-gray-500 mb-1 block">결제 수단</label>
+          <div className="flex gap-2 mt-0.5">
+            {(['카드', '현금'] as const).map(m => (
+              <PillButton key={m} label={m === '카드' ? '💳 카드' : '💵 현금'}
+                selected={form.payment_method === m}
+                onClick={() => setForm({ ...form, payment_method: m })}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div>
-        <label className="text-xs text-gray-500 mb-2 block">결제 수단</label>
+        <label className="text-xs text-gray-500 mb-1 block">금액</label>
         <div className="flex gap-2">
-          {(['카드', '현금'] as const).map(m => (
-            <PillButton key={m} label={m === '카드' ? '💳 카드' : '💵 현금'}
-              selected={form.payment_method === m}
-              onClick={() => setForm({ ...form, payment_method: m })}
-            />
-          ))}
+          <input
+            type="number"
+            placeholder="금액"
+            value={form.amount}
+            onChange={e => setForm({ ...form, amount: e.target.value })}
+            required
+            className={`${inputCls} flex-1`}
+          />
+          <select
+            value={form.currency}
+            onChange={e => setForm({ ...form, currency: e.target.value })}
+            className="shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm bg-white"
+          >
+            {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
+          </select>
         </div>
-      </div>
-
-      <div>
-        <label className="text-xs text-gray-500 mb-2 block">통화</label>
-        <div className="flex gap-1.5 flex-wrap">
-          {CURRENCIES.map(cur => (
-            <PillButton key={cur} label={cur}
-              selected={form.currency === cur}
-              onClick={() => setForm({ ...form, currency: cur })}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <input
-          type="number"
-          placeholder="금액"
-          value={form.amount}
-          onChange={e => setForm({ ...form, amount: e.target.value })}
-          required
-          className={inputCls}
-        />
         {form.currency !== 'KRW' && form.amount && rates['KRW'] && rates[form.currency] && (
           <p className="text-xs text-gray-400 mt-1.5">
             ≈ {calcKRW(Number(form.amount), form.currency, rates).toLocaleString()}원
@@ -218,7 +230,7 @@ function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdi
           {exp.payment_method && (
             <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>
           )}
-          <span className="ml-1 text-gray-300">· {formatExpenseDate(exp.created_at)}</span>
+          <span className="ml-1 text-gray-300">· {formatExpenseDate(exp.date ?? exp.created_at)}</span>
         </p>
       </div>
       <div className="text-right shrink-0">
@@ -243,6 +255,7 @@ function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdi
 const emptyForm = (userName: string, members: string[]): FormState => ({
   title: '', amount: '', paid_by: userName,
   split_with: [...members], category: '식비', currency: 'KRW', payment_method: '카드',
+  date: new Date().toISOString().split('T')[0],
 })
 
 export default function ExpenseTab({ tripId, userName, budget = 0, members }: Props) {
@@ -301,7 +314,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
         trip_id: tripId, title: form.title, amount: Number(form.amount),
         paid_by: form.paid_by, split_with: form.split_with,
         category: form.category, currency: form.currency,
-        payment_method: form.payment_method,
+        payment_method: form.payment_method, date: form.date,
       }])
       .select().single()
     if (data) {
@@ -321,7 +334,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
         title: form.title, amount: Number(form.amount),
         paid_by: form.paid_by, split_with: form.split_with,
         category: form.category, currency: form.currency,
-        payment_method: form.payment_method,
+        payment_method: form.payment_method, date: form.date,
       })
       .eq('id', editingId)
       .select().single()
@@ -339,6 +352,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members }: Pr
       paid_by: exp.paid_by, split_with: exp.split_with,
       category: exp.category, currency: exp.currency,
       payment_method: exp.payment_method,
+      date: exp.date ?? new Date().toISOString().split('T')[0],
     })
   }
 
