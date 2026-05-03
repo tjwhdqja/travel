@@ -441,16 +441,17 @@ function findGuideData(destination: string): GuideData {
 
 export default function GuideTab({ destination }: Props) {
   const [activeSection, setActiveSection] = useState<SectionKey>('attractions')
+  const [showAI, setShowAI] = useState(false)
   const [aiResult, setAiResult] = useState<PlaceItem[] | null>(null)
   const [aiAdded, setAiAdded] = useState<PlaceItem[]>([])
   const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
   const data = findGuideData(destination)
   const section = SECTIONS.find(s => s.key === activeSection)!
   const items = [...data[activeSection], ...aiAdded]
 
   async function generateAI() {
-    setAiLoading(true)
-    setAiResult(null)
+    setAiLoading(true); setAiError(''); setAiResult(null)
     const sectionLabel = section.label
     const prompt = `${destination}의 ${sectionLabel} 중 현지인에게 유명하지만 잘 알려지지 않은 숨은 명소 3곳을 아래 JSON 형식으로만 답해 (설명 없이):
 [{"name":"장소명","desc":"한줄 설명","tip":"현지 팁 (없으면 빈 문자열)"}]`
@@ -471,54 +472,74 @@ export default function GuideTab({ destination }: Props) {
       const text: string = data.choices?.[0]?.message?.content ?? ''
       const match = text.match(/\[[\s\S]*\]/)
       if (match) setAiResult(JSON.parse(match[0]) as PlaceItem[])
-    } catch { /* silent */ }
+    } catch { setAiError('추천 생성에 실패했습니다. 다시 시도해주세요.') }
     setAiLoading(false)
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-        {SECTIONS.map(s => (
-          <button
-            key={s.key}
-            onClick={() => { setActiveSection(s.key); setAiResult(null); setAiAdded([]) }}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition ${
-              activeSection === s.key
-                ? 'bg-indigo-500 text-white'
-                : 'bg-white border border-gray-200 text-gray-600 hover:border-indigo-300'
-            }`}
-          >
-            {s.emoji} {s.label}
-          </button>
-        ))}
+      {/* 상단 버튼 행 */}
+      <div className="flex gap-2">
+        <div className="flex gap-2 flex-1 overflow-x-auto scrollbar-hide">
+          {SECTIONS.map(s => (
+            <button
+              key={s.key}
+              onClick={() => { setActiveSection(s.key); setAiResult(null); setAiAdded([]) }}
+              className={`flex-shrink-0 px-4 py-3 rounded-xl text-sm font-medium transition border ${
+                activeSection === s.key
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'
+              }`}
+            >
+              {s.emoji} {s.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
+          className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+        >
+          ✨ AI
+        </button>
       </div>
 
-      <button
-        onClick={generateAI}
-        disabled={aiLoading}
-        className="w-full py-3 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
-      >
-        ✨ AI 숨은 명소 추천
-      </button>
+      {/* AI 옵션 카드 */}
+      {showAI && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+          <p className="font-semibold text-sm text-gray-800">✨ AI 숨은 명소 추천</p>
+          <p className="text-xs text-gray-400">📍 {destination} · {section.emoji} {section.label}</p>
+          <button
+            onClick={generateAI} disabled={aiLoading}
+            className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
+          >
+            {aiLoading ? '🤖 생성 중...' : '숨은 명소 추천 받기'}
+          </button>
+          {aiError && <p className="text-xs text-red-400 text-center">{aiError}</p>}
+        </div>
+      )}
 
-      <AIResultPanel
-        loading={aiLoading}
-        result={aiResult && (
-          <div className="space-y-2">
-            {aiResult.map((item, i) => (
-              <div key={i} className="py-2 border-b border-gray-50 last:border-0">
-                <p className="text-sm font-semibold text-gray-800">{item.name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-                {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-        onRetry={() => { setAiResult(null); generateAI() }}
-        onAdd={() => { setAiAdded(prev => [...prev, ...(aiResult ?? [])]); setAiResult(null) }}
-        addLabel="목록에 추가"
-      />
+      {/* AI 결과 패널 */}
+      {showAI && (
+        <AIResultPanel
+          loading={aiLoading}
+          result={aiResult && (
+            <div className="space-y-2">
+              {aiResult.map((item, i) => (
+                <div key={i} className="py-2 border-b border-gray-50 last:border-0">
+                  <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                  {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+          onRetry={() => { setAiResult(null); generateAI() }}
+          onAdd={() => { setAiAdded(prev => [...prev, ...(aiResult ?? [])]); setAiResult(null); setShowAI(false) }}
+          addLabel="목록에 추가"
+        />
+      )}
 
+      {/* 장소 목록 */}
       <div className="space-y-2">
         <p className="text-xs text-gray-400 px-1">📍 {destination} · {section.emoji} {section.label}</p>
         {items.map((item, i) => (

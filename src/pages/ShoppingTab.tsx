@@ -225,8 +225,10 @@ interface Props {
 export default function ShoppingTab({ tripId, userName, destination }: Props) {
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [showAI, setShowAI] = useState(false)
   const [aiResult, setAiResult] = useState<RecommendGroup[] | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
   const [showRecommend, setShowRecommend] = useState(true)
 
   const presetData = SHOPPING_DATA[destination] ?? null
@@ -262,7 +264,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
   }
 
   async function generateAI() {
-    setAiLoading(true)
+    setAiLoading(true); setAiError(''); setAiResult(null)
     const prompt = `${destination} 여행 시 사오기 좋은 특산품, 기념품, 현지 간식 추천을 아래 JSON 형식으로만 답해 (설명 없이):
 [{"label":"🍬 간식·식품","items":["아이템1","아이템2"]},{"label":"🛍 패션·뷰티","items":[]},{"label":"🎁 기념품","items":["아이템1"]}]
 각 카테고리 5개 이내, 없는 카테고리는 제외`
@@ -283,7 +285,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
       const text: string = data.choices?.[0]?.message?.content ?? ''
       const match = text.match(/\[[\s\S]*\]/)
       if (match) setAiResult(JSON.parse(match[0]) as RecommendGroup[])
-    } catch { /* silent */ }
+    } catch { setAiError('추천 생성에 실패했습니다. 다시 시도해주세요.') }
     setAiLoading(false)
   }
 
@@ -300,69 +302,87 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 추천 섹션 */}
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+      {/* 상단 버튼 행 */}
+      <div className="flex gap-2">
         <button
           onClick={() => setShowRecommend(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3.5"
+          className={`flex-1 py-3 rounded-xl font-semibold text-sm transition border ${showRecommend ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
         >
-          <span className="font-semibold text-sm text-gray-800">🛒 {destination} 쇼핑 추천</span>
-          <span className="text-gray-400 text-xs">{showRecommend ? '▲' : '▼'}</span>
+          🛒 쇼핑 추천
         </button>
-
-        {showRecommend && (
-          <div className="px-4 pb-4 space-y-4 border-t border-gray-50">
-            {presetData ? (
-              presetData.map(group => {
-                const available = group.items.filter(p => !addedTexts.has(p))
-                if (available.length === 0) return null
-                return (
-                  <div key={group.label} className="pt-3">
-                    <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {available.map(p => (
-                        <button key={p} onClick={() => addItem(p)}
-                          className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
-                          + {p}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              <p className="text-xs text-gray-400 pt-3 text-center">"{destination}"의 추천 정보가 없어요</p>
-            )}
-            <button
-              onClick={generateAI}
-              disabled={aiLoading}
-              className="w-full mt-1 py-2 rounded-xl bg-indigo-500 text-white text-xs font-semibold hover:bg-indigo-600 disabled:opacity-60 transition">
-              {`✨ ${destination} AI 추천 받기`}
-            </button>
-          </div>
-        )}
+        <button
+          onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
+          className={`px-4 py-3 rounded-xl font-medium text-sm transition border ${showAI ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'}`}
+        >
+          ✨ AI
+        </button>
       </div>
 
-      <AIResultPanel
-        loading={aiLoading}
-        result={aiResult && (
-          <div className="space-y-3">
-            {aiResult.map(group => (
-              <div key={group.label}>
-                <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {group.items.map(p => (
-                    <span key={p} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full">{p}</span>
-                  ))}
+      {/* AI 옵션 카드 */}
+      {showAI && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+          <p className="font-semibold text-sm text-gray-800">✨ AI 쇼핑 추천</p>
+          <p className="text-xs text-gray-400">📍 {destination} · 현지 특산품·기념품 추천</p>
+          <button
+            onClick={generateAI} disabled={aiLoading}
+            className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-60 transition"
+          >
+            {aiLoading ? '🤖 생성 중...' : 'AI 추천 받기'}
+          </button>
+          {aiError && <p className="text-xs text-red-400 text-center">{aiError}</p>}
+        </div>
+      )}
+
+      {/* AI 결과 패널 */}
+      {showAI && (
+        <AIResultPanel
+          loading={aiLoading}
+          result={aiResult && (
+            <div className="space-y-3">
+              {aiResult.map(group => (
+                <div key={group.label}>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.items.map(p => (
+                      <span key={p} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full">{p}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-        onRetry={() => { setAiResult(null); generateAI() }}
-        onAdd={addAllAiItems}
-        addLabel="전체 쇼핑 리스트에 추가"
-      />
+              ))}
+            </div>
+          )}
+          onRetry={() => { setAiResult(null); generateAI() }}
+          onAdd={addAllAiItems}
+          addLabel="전체 쇼핑 리스트에 추가"
+        />
+      )}
+
+      {/* 추천 섹션 */}
+      {showRecommend && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+          {presetData ? (
+            presetData.map(group => {
+              const available = group.items.filter(p => !addedTexts.has(p))
+              if (available.length === 0) return null
+              return (
+                <div key={group.label}>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {available.map(p => (
+                      <button key={p} onClick={() => addItem(p)}
+                        className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
+                        + {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <p className="text-xs text-gray-400 text-center">"{destination}"의 추천 정보가 없어요</p>
+          )}
+        </div>
+      )}
 
       {/* 내 쇼핑 리스트 */}
       {loading ? (
