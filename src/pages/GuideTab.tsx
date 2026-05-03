@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import AIResultPanel from '../components/AIResultPanel'
-import { btn } from '../lib/design'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -423,10 +422,10 @@ const FALLBACK: GuideData = {
 type SectionKey = 'attractions' | 'restaurants' | 'bars' | 'activities'
 
 const SECTIONS: { key: SectionKey; label: string; emoji: string }[] = [
-  { key: 'attractions', label: '주요 관광지', emoji: '🗺️' },
-  { key: 'restaurants', label: '현지 맛집', emoji: '🍽️' },
-  { key: 'bars', label: '현지 술집', emoji: '🍺' },
-  { key: 'activities', label: '추천 액티비티', emoji: '🎯' },
+  { key: 'attractions', label: '관광지', emoji: '🗺️' },
+  { key: 'restaurants', label: '맛집', emoji: '🍽️' },
+  { key: 'bars', label: '술집', emoji: '🍺' },
+  { key: 'activities', label: '액티비티', emoji: '🎯' },
 ]
 
 interface Props {
@@ -479,17 +478,17 @@ export default function GuideTab({ destination }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 상단 버튼 행 */}
-      <div className="flex gap-2">
-        <div className="flex gap-1.5 flex-1 overflow-x-auto scrollbar-hide">
+      {/* 섹션 탭 + AI — 언더라인 스타일 */}
+      <div className="flex items-stretch border-b border-gray-100">
+        <div className="flex flex-1 overflow-x-auto scrollbar-hide">
           {SECTIONS.map(s => (
             <button
               key={s.key}
               onClick={() => { setActiveSection(s.key); setAiResult(null); setAiAdded([]) }}
-              className={`flex-shrink-0 px-3 py-2 rounded-full text-sm font-medium transition ${
+              className={`flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
                 activeSection === s.key
-                  ? 'bg-indigo-500 text-white'
-                  : 'bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 border border-gray-200'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
               {s.emoji} {s.label}
@@ -498,7 +497,9 @@ export default function GuideTab({ destination }: Props) {
         </div>
         <button
           onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-          className={`flex-shrink-0 ${btn.ai(showAI)}`}
+          className={`flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
+            showAI ? 'border-violet-500 text-violet-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
         >
           ✨ AI
         </button>
