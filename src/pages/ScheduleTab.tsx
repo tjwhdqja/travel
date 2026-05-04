@@ -332,7 +332,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   }, [tripId])
 
   async function fetchAll() {
-    const { data: scheduleData } = await supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('sort_order').order('time')
+    const { data: scheduleData } = await supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('time')
     setSchedules(scheduleData ?? [])
     setLoading(false)
   }
