@@ -340,7 +340,6 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   function sorted(list: Schedule[]) {
     return [...list].sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date)
-      if (a.sort_order !== b.sort_order) return (a.sort_order ?? 0) - (b.sort_order ?? 0)
       return (a.time ?? '').localeCompare(b.time ?? '')
     })
   }
@@ -559,14 +558,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
                   <span className="text-sm text-gray-500">{formatDate(date)}</span>
                 </div>
 
-                {items.length === 0 ? (
-                  <button
-                    onClick={() => { setShowForm(true); setEditingId(null); setShowAI(false); setShowNearby(false); setForm(emptyForm(date)) }}
-                    className="w-full border border-dashed border-gray-200 rounded-xl px-4 py-3 text-center hover:border-indigo-300 hover:bg-indigo-50 transition group"
-                  >
-                    <p className="text-xs text-gray-300 group-hover:text-indigo-400">+ 일정 추가</p>
-                  </button>
-                ) : (
+                {items.length > 0 && (
                   <div>
                     {items.map((item, index) => (
                       <Fragment key={item.id}>
