@@ -18,8 +18,8 @@ export const btn = {
   ai: (active: boolean) =>
     `px-4 py-3 rounded-xl font-medium text-sm transition border ${
       active
-        ? 'bg-violet-50 border-violet-200 text-violet-600'
-        : 'bg-white border-gray-200 text-gray-600 hover:border-violet-200 hover:text-violet-500'
+        ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
+        : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-500'
     }`,
 }
 
