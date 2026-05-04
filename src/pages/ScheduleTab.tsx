@@ -57,20 +57,10 @@ interface FormProps {
   onCancel: () => void
 }
 
-function RouteConnector({ from, to }: { from: string | null; to: string | null }) {
+function RouteConnector() {
   return (
-    <div className="relative h-2 z-10">
+    <div className="relative h-2">
       <div className="absolute left-[23px] top-0 bottom-0 w-0.5 bg-gray-200" />
-      {from && to && (
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`}
-          target="_blank" rel="noopener noreferrer"
-          className="absolute left-6 -translate-x-1/2 -translate-y-1/2 border border-dashed border-indigo-200 bg-white px-2 py-0.5 rounded-full text-[10px] text-indigo-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition-colors whitespace-nowrap"
-          style={{ top: '10px' }}
-        >
-          🗺️ 경로
-        </a>
-      )}
     </div>
   )
 }
@@ -228,9 +218,10 @@ interface ItemProps {
   onCancelEdit: () => void
   isFirst: boolean
   isLast: boolean
+  nextLocation?: string | null
 }
 
-function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit, isFirst, isLast }: ItemProps) {
+function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit, isFirst, isLast, nextLocation }: ItemProps) {
   if (editingId === item.id) {
     return (
       <div className="bg-white rounded-2xl shadow-sm p-5">
@@ -244,7 +235,7 @@ function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onSt
   }
 
   return (
-    <div className="flex items-stretch gap-2">
+    <div className="flex items-stretch gap-2 relative">
       <div className="relative flex flex-col items-center w-12 flex-shrink-0 pt-2">
         {!isFirst && <div className="absolute top-0 w-0.5 h-[23px] bg-gray-200" />}
         <span className="relative z-10 text-[11px] text-gray-400 font-medium leading-none tabular-nums">
@@ -270,6 +261,15 @@ function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onSt
           { label: '삭제', onClick: () => onDelete(item.id), danger: true },
         ]} />
       </div>
+      {!isLast && item.location && nextLocation && (
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(item.location)}&destination=${encodeURIComponent(nextLocation)}&travelmode=transit`}
+          target="_blank" rel="noopener noreferrer"
+          className="absolute left-6 -translate-x-1/2 bottom-0 translate-y-1/2 border border-dashed border-indigo-200 bg-white px-2 py-0.5 rounded-full text-[10px] text-indigo-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition-colors whitespace-nowrap z-20"
+        >
+          🗺️ 경로
+        </a>
+      )}
     </div>
   )
 }
@@ -576,10 +576,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
                           onStartEdit={startEdit} onDelete={deleteSchedule}
                           onUpdate={updateSchedule} onCancelEdit={() => setEditingId(null)}
                           isFirst={index === 0} isLast={index === items.length - 1}
+                          nextLocation={index < items.length - 1 ? items[index + 1].location : undefined}
                         />
-                        {index < items.length - 1 && (
-                          <RouteConnector from={item.location} to={items[index + 1].location} />
-                        )}
+                        {index < items.length - 1 && <RouteConnector />}
                       </Fragment>
                     ))}
                   </div>
