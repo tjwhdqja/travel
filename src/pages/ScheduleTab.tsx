@@ -59,13 +59,14 @@ interface FormProps {
 
 function RouteConnector({ from, to }: { from: string | null; to: string | null }) {
   return (
-    <div className="flex items-center gap-2 pl-[23px] my-0.5">
-      <div className="w-0.5 h-5 bg-gray-200" />
+    <div className="relative h-2 z-10">
+      <div className="absolute left-[23px] top-0 bottom-0 w-0.5 bg-gray-200" />
       {from && to && (
         <a
           href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`}
           target="_blank" rel="noopener noreferrer"
-          className="text-xs text-gray-400 hover:text-indigo-400 transition-colors"
+          className="absolute left-6 -translate-x-1/2 -translate-y-1/2 border border-dashed border-indigo-200 bg-white px-2 py-0.5 rounded-full text-[10px] text-indigo-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition-colors whitespace-nowrap"
+          style={{ top: '10px' }}
         >
           🗺️ 경로
         </a>
@@ -225,9 +226,11 @@ interface ItemProps {
   onDelete: (id: string) => void
   onUpdate: (e: React.FormEvent) => void
   onCancelEdit: () => void
+  isFirst: boolean
+  isLast: boolean
 }
 
-function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit }: ItemProps) {
+function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onStartEdit, onDelete, onUpdate, onCancelEdit, isFirst, isLast }: ItemProps) {
   if (editingId === item.id) {
     return (
       <div className="bg-white rounded-2xl shadow-sm p-5">
@@ -241,12 +244,14 @@ function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onSt
   }
 
   return (
-    <div className="flex items-start gap-2">
-      <div className="flex flex-col items-center w-12 flex-shrink-0 pt-2">
-        <span className="text-[11px] text-gray-400 font-medium leading-none tabular-nums">
+    <div className="flex items-stretch gap-2">
+      <div className="relative flex flex-col items-center w-12 flex-shrink-0 pt-2">
+        {!isFirst && <div className="absolute top-0 w-0.5 h-[23px] bg-gray-200" />}
+        <span className="relative z-10 text-[11px] text-gray-400 font-medium leading-none tabular-nums">
           {item.time ? item.time.slice(0, 5) : ''}
         </span>
-        <div className="w-3 h-3 rounded-full bg-indigo-400 mt-1 ring-2 ring-white shadow-sm flex-shrink-0" />
+        <div className="relative z-10 w-3 h-3 rounded-full bg-indigo-400 mt-1 ring-2 ring-white shadow-sm flex-shrink-0" />
+        {!isLast && <div className="w-0.5 flex-1 bg-gray-200 mt-1" />}
       </div>
       <div className="flex-1 bg-white rounded-xl px-3 py-2.5 shadow-sm flex items-start gap-2 min-w-0">
         <span className="text-lg leading-none mt-0.5 flex-shrink-0">{getCategoryEmoji(item.category)}</span>
@@ -568,6 +573,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
                           startDate={startDate} endDate={endDate}
                           onStartEdit={startEdit} onDelete={deleteSchedule}
                           onUpdate={updateSchedule} onCancelEdit={() => setEditingId(null)}
+                          isFirst={index === 0} isLast={index === items.length - 1}
                         />
                         {index < items.length - 1 && (
                           <RouteConnector from={item.location} to={items[index + 1].location} />
