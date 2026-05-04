@@ -457,25 +457,27 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      <div className="space-y-2">
         <button
           onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(selectedDate ?? startDate)) }}
-          className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
+          className={btn.primary}
         >
           + 일정 추가
         </button>
-        <button
-          onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false) }}
-          className={btn.ai(showAI)}
-        >
-          ✨ AI
-        </button>
-        <button
-          onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false) }}
-          className={btn.toggle(showNearby)}
-        >
-          📍 주변
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false) }}
+            className={`flex-1 ${btn.ai(showAI)}`}
+          >
+            ✨ AI 생성
+          </button>
+          <button
+            onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false) }}
+            className={`flex-1 ${btn.toggle(showNearby)}`}
+          >
+            📍 주변 추천
+          </button>
+        </div>
       </div>
 
       <div className="flex items-start w-full py-2">
