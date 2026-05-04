@@ -235,16 +235,29 @@ function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onSt
   }
 
   return (
-    <div className="flex items-stretch gap-2 relative">
+    <div className="flex items-stretch gap-2">
       <div className="relative flex flex-col items-end w-14 flex-shrink-0">
-        {!isFirst && <div className="absolute top-0 right-[6px] w-0.5 h-[16px] bg-gray-200" />}
+        {!isFirst && <div className="absolute top-0 right-[5px] w-0.5 h-[16px] bg-gray-200" />}
         <div className="flex items-center gap-1.5 pt-4">
           <span className="relative z-10 text-[11px] text-gray-400 font-medium leading-none tabular-nums">
             {item.time ? item.time.slice(0, 5) : ''}
           </span>
           <div className="relative z-10 w-3 h-3 rounded-full bg-indigo-400 ring-2 ring-white shadow-sm flex-shrink-0" />
         </div>
-        {!isLast && <div className="w-0.5 flex-1 bg-gray-200 mt-1 mr-[5px]" />}
+        {!isLast && (
+          <div className="relative w-0.5 flex-1 bg-gray-200 mt-1 mr-[5px]">
+            {item.location && nextLocation && (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(item.location)}&destination=${encodeURIComponent(nextLocation)}&travelmode=transit`}
+                target="_blank" rel="noopener noreferrer"
+                className="absolute -translate-y-1/2 right-full mr-1.5 border border-dashed border-indigo-200 bg-white px-2 py-0.5 rounded-full text-[10px] text-indigo-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition-colors whitespace-nowrap z-20"
+                style={{ top: 'calc(50% + 10px)' }}
+              >
+                🗺️ 경로
+              </a>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex-1 bg-white rounded-xl px-3 py-2.5 shadow-sm flex items-start gap-2 min-w-0">
         <span className="text-lg leading-none mt-0.5 flex-shrink-0">{getCategoryEmoji(item.category)}</span>
@@ -263,15 +276,6 @@ function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onSt
           { label: '삭제', onClick: () => onDelete(item.id), danger: true },
         ]} />
       </div>
-      {!isLast && item.location && nextLocation && (
-        <a
-          href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(item.location)}&destination=${encodeURIComponent(nextLocation)}&travelmode=transit`}
-          target="_blank" rel="noopener noreferrer"
-          className="absolute left-[50px] -translate-x-1/2 bottom-0 translate-y-1/2 border border-dashed border-indigo-200 bg-white px-2 py-0.5 rounded-full text-[10px] text-indigo-400 hover:text-indigo-500 hover:border-indigo-300 hover:bg-indigo-50 transition-colors whitespace-nowrap z-20"
-        >
-          🗺️ 경로
-        </a>
-      )}
     </div>
   )
 }
