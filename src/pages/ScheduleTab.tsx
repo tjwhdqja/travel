@@ -59,8 +59,8 @@ interface FormProps {
 
 function RouteConnector({ from, to }: { from: string | null; to: string | null }) {
   return (
-    <div className="flex items-center gap-2 pl-5 my-0.5">
-      <div className="w-0.5 h-5 bg-gray-200 ml-1.5" />
+    <div className="flex items-center gap-2 pl-[23px] my-0.5">
+      <div className="w-0.5 h-5 bg-gray-200" />
       {from && to && (
         <a
           href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`}
