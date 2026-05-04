@@ -27,8 +27,8 @@ export default function AIResultPanel({
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       {/* 헤더 */}
       <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-gray-50">
-        <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
-          <Sparkles size={13} className="text-violet-500" />
+        <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+          <Sparkles size={13} className="text-indigo-500" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-800">{title}</p>
@@ -43,7 +43,7 @@ export default function AIResultPanel({
             {options && <div>{options}</div>}
             <button
               onClick={onGenerate}
-              className="w-full py-2.5 rounded-xl bg-violet-500 text-white text-sm font-semibold hover:bg-violet-600 transition"
+              className="w-full py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition"
             >
               {generateLabel}
             </button>
@@ -73,7 +73,7 @@ export default function AIResultPanel({
               </button>
               <button
                 onClick={onAdd}
-                className="flex-1 py-2.5 rounded-xl bg-violet-500 text-white text-sm font-semibold hover:bg-violet-600 transition"
+                className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition"
               >
                 {addLabel}
               </button>

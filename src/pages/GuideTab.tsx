@@ -498,7 +498,7 @@ export default function GuideTab({ destination }: Props) {
         <button
           onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
           className={`flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
-            showAI ? 'border-violet-500 text-violet-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+            showAI ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'
           }`}
         >
           ✨ AI
