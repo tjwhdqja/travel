@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ChevronDown, ChevronUp, Pencil } from 'lucide-react'
-import { btn } from '../lib/design'
-import HamburgerMenu from '../components/HamburgerMenu'
+import { btn, card, input as inputCls } from '../lib/design'
+import KebabMenu from '../components/KebabMenu'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
+import Toast, { useToast } from '../components/Toast'
 
 interface Trip {
   id: string
@@ -41,7 +42,7 @@ function DestinationInput({ value, onChange }: { value: string; onChange: (v: st
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="여행지 선택 또는 직접 입력"
         required
-        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+        className={inputCls}
       />
       {open && (
         <div className="absolute z-50 w-full mt-1 bg-white rounded-2xl shadow-xl border border-gray-100 max-h-72 overflow-y-auto">
@@ -52,7 +53,7 @@ function DestinationInput({ value, onChange }: { value: string; onChange: (v: st
                 {group.places.map(place => (
                   <button key={place} type="button"
                     onMouseDown={() => { onChange(place); setOpen(false) }}
-                    className="px-3 py-1.5 text-sm rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition">
+                    className={btn.chip}>
                     {place}
                   </button>
                 ))}
@@ -72,11 +73,12 @@ interface TripFormProps {
   onCancel: () => void
   title: string
   submitLabel: string
+  submitting?: boolean
 }
 
-function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: TripFormProps) {
+function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel, submitting = false }: TripFormProps) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-6">
+    <div className={`${card.base} p-6`}>
       <h2 className="font-bold text-gray-800 mb-4">{title}</h2>
       <form onSubmit={onSubmit} className="space-y-3">
         <input
@@ -84,17 +86,17 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
           value={form.name}
           onChange={e => setForm({ ...form, name: e.target.value })}
           required
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+          className={inputCls}
         />
         <DestinationInput value={form.destination} onChange={v => setForm({ ...form, destination: v })} />
         <div className="flex gap-2">
           <div className="flex-1">
             <label className="text-xs text-gray-500 mb-1 block">출발일</label>
-            <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
+            <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required className={inputCls} />
           </div>
           <div className="flex-1">
             <label className="text-xs text-gray-500 mb-1 block">귀국일</label>
-            <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm" />
+            <input type="date" value={form.end_date} min={form.start_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className={inputCls} />
           </div>
         </div>
         <div className="space-y-2">
@@ -102,7 +104,7 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
             {[10, 50, 100, 200, 300, 500].map(wan => (
               <button key={wan} type="button"
                 onClick={() => setForm({ ...form, budget: String(wan * 10000) })}
-                className="px-3 py-1.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition">
+                className={btn.chip}>
                 {wan}만
               </button>
             ))}
@@ -117,14 +119,14 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel }: Tri
                 const raw = e.target.value.replace(/,/g, '')
                 if (raw === '' || /^\d+$/.test(raw)) setForm({ ...form, budget: raw })
               }}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              className={inputCls}
             />
             {form.budget && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-400">원</span>}
           </div>
         </div>
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onCancel} className={btn.secondary}>취소</button>
-          <button type="submit" className={btn.action}>{submitLabel}</button>
+          <button type="submit" disabled={submitting} className={btn.action}>{submitLabel}</button>
         </div>
       </form>
     </div>
@@ -143,9 +145,22 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   const [editingNickname, setEditingNickname] = useState(false)
   const [nicknameInput, setNicknameInput] = useState(nickname)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingDeleteRef = useRef<{ id: string; item: Trip } | null>(null)
+  const { toast, showToast } = useToast()
 
   useEffect(() => { fetchTrips() }, [])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`trips:user:${nickname}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => { fetchTrips() })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trip_members', filter: `name=eq.${nickname}` }, () => { fetchTrips() })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [nickname])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -162,40 +177,64 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     if (!trimmed || trimmed === nickname) { setEditingNickname(false); return }
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    await supabase.from('profiles').update({ nickname: trimmed }).eq('id', user.id)
+    const { error } = await supabase.from('profiles').update({ nickname: trimmed }).eq('id', user.id)
+    if (error) { showToast('닉네임 변경에 실패했어요', 'error'); return }
+    await supabase.from('trip_members').update({ name: trimmed }).eq('name', nickname)
     onNicknameChange(trimmed)
     setEditingNickname(false)
+    showToast('닉네임을 변경했어요')
   }
 
   async function fetchTrips() {
-    const { data: memberData } = await supabase
+    const { data: memberData, error } = await supabase
       .from('trip_members').select('trip_id').eq('name', nickname)
+    if (error) { showToast('여행 목록을 불러오지 못했어요', 'error'); setLoading(false); return }
     const tripIds = memberData?.map(m => m.trip_id) ?? []
     if (tripIds.length === 0) { setTrips([]); setLoading(false); return }
-    const { data } = await supabase
+    const { data, error: tripsError } = await supabase
       .from('trips').select('*').in('id', tripIds).order('created_at', { ascending: false })
+    if (tripsError) { showToast('여행 목록을 불러오지 못했어요', 'error'); setLoading(false); return }
     setTrips(data ?? [])
     setLoading(false)
   }
 
   async function createTrip(e: React.FormEvent) {
     e.preventDefault()
+    if (form.end_date < form.start_date) {
+      showToast('귀국일이 출발일보다 빠를 수 없어요', 'error')
+      return
+    }
+    setSubmitting(true)
     const { data } = await supabase.from('trips').insert([{
       name: form.name, destination: form.destination,
       start_date: form.start_date, end_date: form.end_date,
       budget: Number(form.budget) || 0, created_by: nickname
     }]).select().single()
     if (data) {
-      await supabase.from('trip_members').insert([{ trip_id: data.id, name: nickname }])
-      setTrips([data, ...trips])
-      setShowForm(false)
-      setForm(emptyForm)
+      const { error: memberError } = await supabase.from('trip_members').insert([{ trip_id: data.id, name: nickname }])
+      if (memberError) {
+        await supabase.from('trips').delete().eq('id', data.id)
+        showToast('여행 만들기에 실패했어요', 'error')
+      } else {
+        setTrips([data, ...trips])
+        setShowForm(false)
+        setForm(emptyForm)
+        showToast('여행을 만들었어요')
+      }
+    } else {
+      showToast('여행 만들기에 실패했어요', 'error')
     }
+    setSubmitting(false)
   }
 
   async function updateTrip(e: React.FormEvent) {
     e.preventDefault()
     if (!editingTrip) return
+    if (form.end_date < form.start_date) {
+      showToast('귀국일이 출발일보다 빠를 수 없어요', 'error')
+      return
+    }
+    setSubmitting(true)
     const { data } = await supabase.from('trips').update({
       name: form.name, destination: form.destination,
       start_date: form.start_date, end_date: form.end_date,
@@ -205,13 +244,45 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
       setTrips(prev => prev.map(t => t.id === data.id ? data : t))
       setEditingTrip(null)
       setForm(emptyForm)
+      showToast('여행을 수정했어요')
+    } else {
+      showToast('여행 수정에 실패했어요', 'error')
     }
+    setSubmitting(false)
+  }
+
+  async function commitTripDelete(tripId: string) {
+    await Promise.all([
+      supabase.from('trip_members').delete().eq('trip_id', tripId),
+      supabase.from('schedules').delete().eq('trip_id', tripId),
+      supabase.from('expenses').delete().eq('trip_id', tripId),
+      supabase.from('checklists').delete().eq('trip_id', tripId),
+    ])
+    await supabase.from('trips').delete().eq('id', tripId)
   }
 
   async function deleteTrip(id: string) {
-    if (!confirm('여행을 삭제하면 모든 데이터가 사라져요. 정말 삭제할까요?')) return
-    await supabase.from('trips').delete().eq('id', id)
+    const item = trips.find(t => t.id === id)
+    if (!item) return
+    if (pendingDeleteRef.current) {
+      clearTimeout(undoTimerRef.current!)
+      await commitTripDelete(pendingDeleteRef.current.id)
+    }
     setTrips(prev => prev.filter(t => t.id !== id))
+    const timer = setTimeout(async () => {
+      await commitTripDelete(id)
+      pendingDeleteRef.current = null
+    }, 3000)
+    undoTimerRef.current = timer
+    pendingDeleteRef.current = { id, item }
+    showToast('여행을 삭제했어요', 'success', {
+      label: '실행 취소',
+      onClick: () => {
+        clearTimeout(timer)
+        setTrips(prev => [item, ...prev])
+        pendingDeleteRef.current = null
+      },
+    })
   }
 
   function openEdit(trip: Trip) {
@@ -222,7 +293,6 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
       budget: trip.budget > 0 ? String(trip.budget) : ''
     })
     setShowForm(false)
-
   }
 
   function cancelForm() {
@@ -231,11 +301,18 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     setForm(emptyForm)
   }
 
+  function getDuration(trip: Trip): string {
+    const start = new Date(trip.start_date + 'T00:00:00')
+    const end = new Date(trip.end_date + 'T00:00:00')
+    const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+    return days === 1 ? '당일치기' : `${days - 1}박${days}일`
+  }
+
   function getStatus(trip: Trip): { label: string; color: string } {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const start = new Date(trip.start_date)
-    const end = new Date(trip.end_date)
+    const start = new Date(trip.start_date + 'T00:00:00')
+    const end = new Date(trip.end_date + 'T00:00:00')
     if (today < start) return { label: '예정', color: 'bg-blue-100 text-blue-600' }
     if (today > end) return { label: '완료', color: 'bg-gray-100 text-gray-500' }
     return { label: '여행중', color: 'bg-green-100 text-green-600' }
@@ -244,8 +321,8 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   function getDday(trip: Trip): string {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const start = new Date(trip.start_date)
-    const end = new Date(trip.end_date)
+    const start = new Date(trip.start_date + 'T00:00:00')
+    const end = new Date(trip.end_date + 'T00:00:00')
     if (today > end) return '완료'
     if (today >= start) return 'D-day'
     const diff = Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
@@ -253,7 +330,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   }
 
   function formatDate(date: string) {
-    return new Date(date).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+    return new Date(date + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
   }
 
   return (
@@ -262,6 +339,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
         <h1 className="text-xl font-bold text-gray-800">✈️ 우리들의 여행</h1>
         <div ref={userMenuRef} className="relative">
           <button
+            type="button"
             onClick={() => setShowUserMenu(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-gray-50 transition"
           >
@@ -275,6 +353,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
           {showUserMenu && (
             <div className="absolute right-0 top-11 z-20 bg-white rounded-xl shadow-lg border border-gray-100 w-36 overflow-hidden">
               <button
+                type="button"
                 onClick={() => { setNicknameInput(nickname); setEditingNickname(true); setShowUserMenu(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition flex items-center gap-2"
               >
@@ -282,6 +361,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                 닉네임 수정
               </button>
               <button
+                type="button"
                 onClick={() => supabase.auth.signOut()}
                 className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-50 transition"
               >
@@ -293,7 +373,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
       </header>
 
       {editingNickname && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30" onClick={() => setEditingNickname(false)}>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setEditingNickname(false)}>
           <div className="bg-white rounded-2xl shadow-xl p-6 w-72 mx-4" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-gray-800 mb-4">닉네임 수정</h3>
             <input
@@ -302,29 +382,32 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
               onKeyDown={e => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setEditingNickname(false) }}
               autoFocus
               placeholder="새 닉네임"
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm mb-3"
+              className={`${inputCls} mb-3`}
             />
             <div className="flex gap-2">
-              <button onClick={() => setEditingNickname(false)} className={btn.secondary}>취소</button>
-              <button onClick={saveNickname} className={btn.action}>저장</button>
+              <button type="button" onClick={() => setEditingNickname(false)} className={btn.secondary}>취소</button>
+              <button type="button" onClick={saveNickname} className={btn.action}>저장</button>
             </div>
           </div>
         </div>
       )}
 
       <main className="max-w-lg mx-auto p-4 space-y-4">
-        <button
-          onClick={() => { setShowForm(true); setEditingTrip(null); setForm(emptyForm) }}
-          className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition"
-        >
-          + 새 여행 만들기
-        </button>
+        {!showForm && !editingTrip && (
+          <button
+            type="button"
+            onClick={() => { setShowForm(true); setEditingTrip(null); setForm(emptyForm) }}
+            className={btn.primary}
+          >
+            + 새 여행 만들기
+          </button>
+        )}
 
         {showForm && (
-          <TripForm form={form} setForm={setForm} onSubmit={createTrip} onCancel={cancelForm} title="새 여행" submitLabel="만들기" />
+          <TripForm form={form} setForm={setForm} onSubmit={createTrip} onCancel={cancelForm} title="새 여행" submitLabel="만들기" submitting={submitting} />
         )}
         {editingTrip && (
-          <TripForm form={form} setForm={setForm} onSubmit={updateTrip} onCancel={cancelForm} title="여행 수정" submitLabel="저장" />
+          <TripForm form={form} setForm={setForm} onSubmit={updateTrip} onCancel={cancelForm} title="여행 수정" submitLabel="저장" submitting={submitting} />
         )}
 
         {loading ? (
@@ -338,7 +421,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
             return (
               <div
                 key={trip.id}
-                className="bg-white rounded-2xl shadow-sm p-5 hover:shadow-md transition cursor-pointer"
+                className={`${card.base} p-5 hover:shadow-md transition cursor-pointer`}
                 onClick={() => navigate(`/trip/${trip.id}`)}
               >
                 <div className="flex items-start justify-between mb-2">
@@ -349,7 +432,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                   <div className="flex items-center gap-2 ml-2 shrink-0" onClick={e => e.stopPropagation()}>
                     <span className="text-indigo-500 text-sm font-bold">{dday}</span>
                     {trip.created_by === nickname && (
-                      <HamburgerMenu items={[
+                      <KebabMenu items={[
                         { label: '수정', onClick: () => openEdit(trip) },
                         { label: '삭제', onClick: () => deleteTrip(trip.id), danger: true },
                       ]} />
@@ -357,13 +440,14 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                   </div>
                 </div>
                 <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
-                <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)}</p>
+                <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)} · {getDuration(trip)}</p>
                 {trip.budget > 0 && <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>}
               </div>
             )
           })
         )}
       </main>
+      {toast && <Toast message={toast.message} type={toast.type} action={toast.action} />}
     </div>
   )
 }

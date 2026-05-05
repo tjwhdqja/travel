@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AIResultPanel from '../components/AIResultPanel'
+import EmptyState from '../components/EmptyState'
+import Toast, { useToast } from '../components/Toast'
+import { btn, card } from '../lib/design'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -373,7 +376,7 @@ const GUIDE: Record<string, GuideData> = {
       { name: '별 관찰 투어', desc: '광공해 없는 섬에서 은하수 관측, 여름밤 추천' },
     ],
   },
-  제주: {
+  제주도: {
     attractions: [
       { name: '한라산 등반', desc: '성판악 or 관음사 코스, 일출 감상 추천', tip: '오전 12시 이후 탐방로 입장 금지' },
       { name: '성산일출봉', desc: '유네스코 세계자연유산, 일출 명소' },
@@ -430,6 +433,7 @@ const SECTIONS: { key: SectionKey; label: string; emoji: string }[] = [
 
 interface Props {
   destination: string
+  isActive?: boolean
 }
 
 function findGuideData(destination: string): GuideData {
@@ -439,16 +443,21 @@ function findGuideData(destination: string): GuideData {
   return key ? GUIDE[key] : FALLBACK
 }
 
-export default function GuideTab({ destination }: Props) {
+export default function GuideTab({ destination, isActive = true }: Props) {
   const [activeSection, setActiveSection] = useState<SectionKey>('attractions')
   const [showAI, setShowAI] = useState(false)
   const [aiResult, setAiResult] = useState<PlaceItem[] | null>(null)
-  const [aiAdded, setAiAdded] = useState<PlaceItem[]>([])
+  const [aiAdded, setAiAdded] = useState<Record<SectionKey, PlaceItem[]>>({ attractions: [], restaurants: [], bars: [], activities: [] })
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  const { toast, showToast } = useToast()
+
+  useEffect(() => {
+    if (!isActive) { setShowAI(false); setAiResult(null) }
+  }, [isActive])
   const data = findGuideData(destination)
   const section = SECTIONS.find(s => s.key === activeSection)!
-  const items = [...data[activeSection], ...aiAdded]
+  const items = [...data[activeSection], ...(aiAdded[activeSection] ?? [])]
 
   async function generateAI() {
     setAiLoading(true); setAiError(''); setAiResult(null)
@@ -468,8 +477,8 @@ export default function GuideTab({ destination }: Props) {
           temperature: 0.7,
         }),
       })
-      const data = await res.json()
-      const text: string = data.choices?.[0]?.message?.content ?? ''
+      const json = await res.json()
+      const text: string = json.choices?.[0]?.message?.content ?? ''
       const match = text.match(/\[[\s\S]*\]/)
       if (match) setAiResult(JSON.parse(match[0]) as PlaceItem[])
     } catch { setAiError('추천 생성에 실패했습니다. 다시 시도해주세요.') }
@@ -478,13 +487,13 @@ export default function GuideTab({ destination }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* 섹션 탭 + AI — 언더라인 스타일 */}
-      <div className="flex items-stretch border-b border-gray-100">
-        <div className="flex flex-1 overflow-x-auto scrollbar-hide">
+      <div className="border-b border-gray-100 overflow-x-auto scrollbar-hide">
+        <div className="flex">
           {SECTIONS.map(s => (
             <button
+              type="button"
               key={s.key}
-              onClick={() => { setActiveSection(s.key); setAiResult(null); setAiAdded([]) }}
+              onClick={() => { setActiveSection(s.key); setAiResult(null); setShowAI(false) }}
               className={`flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
                 activeSection === s.key
                   ? 'border-indigo-500 text-indigo-600'
@@ -495,15 +504,14 @@ export default function GuideTab({ destination }: Props) {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-          className={`flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
-            showAI ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          ✨ AI
-        </button>
       </div>
+      <button
+        type="button"
+        onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
+        className={`w-full ${btn.toggle(showAI)}`}
+      >
+        ✨ AI 숨은 명소 추천
+      </button>
 
       {showAI && (
         <AIResultPanel
@@ -514,8 +522,8 @@ export default function GuideTab({ destination }: Props) {
           loading={aiLoading}
           result={aiResult && (
             <div className="space-y-2">
-              {aiResult.map((item, i) => (
-                <div key={i} className="py-2 border-b border-gray-50 last:border-0">
+              {aiResult.map(item => (
+                <div key={item.name} className="py-2 border-b border-gray-50 last:border-0">
                   <p className="text-sm font-semibold text-gray-800">{item.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
                   {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
@@ -525,7 +533,7 @@ export default function GuideTab({ destination }: Props) {
           )}
           error={aiError}
           onRetry={() => { setAiResult(null) }}
-          onAdd={() => { setAiAdded(prev => [...prev, ...(aiResult ?? [])]); setAiResult(null); setShowAI(false) }}
+          onAdd={() => { setAiAdded(prev => ({ ...prev, [activeSection]: [...(prev[activeSection] ?? []), ...(aiResult ?? [])] })); showToast(`${aiResult?.length ?? 0}개를 목록에 추가했어요`); setAiResult(null); setShowAI(false) }}
           addLabel="목록에 추가"
         />
       )}
@@ -533,8 +541,10 @@ export default function GuideTab({ destination }: Props) {
       {/* 장소 목록 */}
       <div className="space-y-2">
         <p className="text-xs text-gray-400 px-1">📍 {destination} · {section.emoji} {section.label}</p>
-        {items.map((item, i) => (
-          <div key={i} className="bg-white rounded-xl px-4 py-3 shadow-sm">
+        {items.length === 0 ? (
+          <EmptyState icon={section.emoji} title="추천 장소가 없어요" subtitle="AI 추천을 눌러 숨은 명소를 찾아보세요" />
+        ) : items.map((item) => (
+          <div key={item.name} className={`${card.item} px-4 py-3`}>
             <p className="text-sm font-semibold text-gray-800">{item.name}</p>
             <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
             {item.tip && (
@@ -551,6 +561,7 @@ export default function GuideTab({ destination }: Props) {
           </div>
         ))}
       </div>
+      {toast && <Toast message={toast.message} type={toast.type} action={toast.action} />}
     </div>
   )
 }

@@ -7,6 +7,7 @@ import ExpenseTab from './ExpenseTab'
 import ChecklistTab from './ChecklistTab'
 import ShoppingTab from './ShoppingTab'
 import GuideTab from './GuideTab'
+import Spinner from '../components/Spinner'
 
 interface Trip {
   id: string
@@ -31,11 +32,12 @@ function getInitial(name: string) {
   return name.slice(0, 1).toUpperCase()
 }
 
-const AVATAR_COLORS = [
-  'bg-indigo-400', 'bg-pink-400', 'bg-emerald-400',
-  'bg-amber-400', 'bg-violet-400', 'bg-sky-400',
-]
-
+function getAvatarColor(name: string) {
+  const COLORS = ['bg-indigo-400', 'bg-pink-400', 'bg-emerald-400', 'bg-amber-400', 'bg-violet-400', 'bg-sky-400']
+  let hash = 0
+  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xff
+  return COLORS[hash % COLORS.length]
+}
 
 function InviteButton({ tripId }: { tripId: string }) {
   const [copied, setCopied] = useState(false)
@@ -54,6 +56,7 @@ function InviteButton({ tripId }: { tripId: string }) {
 
   return (
     <button
+      type="button"
       onClick={invite}
       title="친구 초대"
       className="w-7 h-7 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors relative"
@@ -73,8 +76,10 @@ export default function TripDetail() {
   const [trip, setTrip] = useState<Trip | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [activeTab, setActiveTab] = useState<Tab>('일정')
+  const [mountedTabs, setMountedTabs] = useState<Set<Tab>>(new Set<Tab>(['일정']))
   const [userName, setUserName] = useState('')
   const [members, setMembers] = useState<string[]>([])
+  const [membersLoaded, setMembersLoaded] = useState(false)
 
   useEffect(() => {
     supabase.from('trips').select('*').eq('id', id).single().then(({ data, error }) => {
@@ -83,6 +88,7 @@ export default function TripDetail() {
     })
     supabase.from('trip_members').select('name').eq('trip_id', id).then(({ data }) => {
       setMembers(data?.map(m => m.name) ?? [])
+      setMembersLoaded(true)
     })
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) {
@@ -99,8 +105,8 @@ export default function TripDetail() {
       setUserName(name)
       const { data: existing } = await supabase.from('trip_members').select('id').eq('trip_id', id).eq('name', name).maybeSingle()
       if (!existing) {
-        await supabase.from('trip_members').insert([{ trip_id: id, name }])
-        setMembers(prev => prev.includes(name) ? prev : [...prev, name])
+        const { error: joinError } = await supabase.from('trip_members').insert([{ trip_id: id, name }])
+        if (!joinError) setMembers(prev => prev.includes(name) ? prev : [...prev, name])
       }
     })
   }, [id])
@@ -108,20 +114,20 @@ export default function TripDetail() {
   if (notFound) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-3">
       <p className="text-gray-400">여행을 찾을 수 없어요</p>
-      <button onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 목록으로</button>
+      <button type="button" onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 목록으로</button>
     </div>
   )
 
   if (!trip) return (
     <div className="min-h-screen flex items-center justify-center">
-      <p className="text-gray-400">불러오는 중...</p>
+      <Spinner />
     </div>
   )
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-100 px-4 pt-3 pb-3">
-        <button onClick={() => navigate('/')} className="flex items-center gap-1 text-indigo-500 text-sm -ml-1 px-1 py-1.5 mb-1.5">
+        <button type="button" onClick={() => navigate('/')} className="flex items-center gap-1 text-indigo-500 text-sm -ml-1 px-1 py-1.5 mb-1.5">
           <ChevronLeft size={16} />
           뒤로
         </button>
@@ -132,9 +138,9 @@ export default function TripDetail() {
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {members.map((m, i) => (
+          {members.map(m => (
             <div key={m} className="flex items-center gap-1.5">
-              <div className={`w-7 h-7 rounded-full ${AVATAR_COLORS[i % AVATAR_COLORS.length]} flex items-center justify-center text-white text-xs font-bold`}>
+              <div className={`w-7 h-7 rounded-full ${getAvatarColor(m)} flex items-center justify-center text-white text-xs font-bold`}>
                 {getInitial(m)}
               </div>
               <span className="text-xs text-gray-500">{m}</span>
@@ -147,8 +153,9 @@ export default function TripDetail() {
       <div className="flex border-b border-gray-100 bg-white">
         {TABS.map(tab => (
           <button
+            type="button"
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => { setActiveTab(tab.id); setMountedTabs(prev => new Set([...prev, tab.id])) }}
             className={`flex-1 py-2.5 flex flex-col items-center gap-1 transition ${
               activeTab === tab.id ? 'text-indigo-500 border-b-2 border-indigo-500' : 'text-gray-400'
             }`}
@@ -160,11 +167,17 @@ export default function TripDetail() {
       </div>
 
       <main className="max-w-lg mx-auto p-4">
-        {activeTab === '일정' && <ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} destination={trip.destination} />}
-        {activeTab === '경비' && <ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} />}
-        {activeTab === '체크' && <ChecklistTab tripId={trip.id} userName={userName} />}
-        {activeTab === '쇼핑' && <ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} />}
-        {activeTab === '가이드' && <GuideTab destination={trip.destination} />}
+        {(!userName || !membersLoaded) ? (
+          <Spinner />
+        ) : (
+          <>
+            {mountedTabs.has('일정') && <div className={activeTab !== '일정' ? 'hidden' : ''}><ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} destination={trip.destination} isActive={activeTab === '일정'} /></div>}
+            {mountedTabs.has('경비') && <div className={activeTab !== '경비' ? 'hidden' : ''}><ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} isActive={activeTab === '경비'} destination={trip.destination} /></div>}
+            {mountedTabs.has('체크') && <div className={activeTab !== '체크' ? 'hidden' : ''}><ChecklistTab tripId={trip.id} userName={userName} /></div>}
+            {mountedTabs.has('쇼핑') && <div className={activeTab !== '쇼핑' ? 'hidden' : ''}><ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} isActive={activeTab === '쇼핑'} /></div>}
+            {mountedTabs.has('가이드') && <div className={activeTab !== '가이드' ? 'hidden' : ''}><GuideTab destination={trip.destination} isActive={activeTab === '가이드'} /></div>}
+          </>
+        )}
       </main>
     </div>
   )

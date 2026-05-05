@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import AIResultPanel from '../components/AIResultPanel'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
-import { btn } from '../lib/design'
+import { btn, card, input as inputCls } from '../lib/design'
+import Toast, { useToast } from '../components/Toast'
 
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
@@ -223,26 +224,68 @@ interface Props {
   tripId: string
   userName: string
   destination: string
+  isActive?: boolean
 }
 
-export default function ShoppingTab({ tripId, userName, destination }: Props) {
+export default function ShoppingTab({ tripId, userName, destination, isActive = true }: Props) {
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [newText, setNewText] = useState('')
   const [showAI, setShowAI] = useState(false)
   const [aiResult, setAiResult] = useState<RecommendGroup[] | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
   const [showRecommend, setShowRecommend] = useState(true)
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+  const { toast, showToast } = useToast()
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingDeleteRef = useRef<{ id: string; item: ShopItem } | null>(null)
 
   const presetData = SHOPPING_DATA[destination] ?? null
 
   useEffect(() => { fetchItems() }, [tripId])
 
+  useEffect(() => {
+    if (!isActive) { setShowAI(false); setAiResult(null) }
+  }, [isActive])
+
+  useEffect(() => {
+    if (items.filter(i => i.checked).length === 0) setConfirmDeleteAll(false)
+  }, [items])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`shopping:${tripId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        if (row.type !== 'shopping') return
+        setItems(prev => prev.some(i => i.id === row.id) ? prev : [...prev, row as ShopItem])
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        if (row.type !== 'shopping') return
+        setItems(prev => prev.map(i => i.id === row.id ? row as ShopItem : i))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
+        setItems(prev => prev.filter(i => i.id !== row.id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId])
+
   async function fetchItems() {
-    const { data } = await supabase.from('checklists')
+    const { data, error } = await supabase.from('checklists')
       .select('*').eq('trip_id', tripId).eq('type', 'shopping').order('created_at')
+    if (error) showToast('쇼핑 리스트를 불러오지 못했어요', 'error')
     setItems(data ?? [])
     setLoading(false)
+  }
+
+  async function deleteAllChecked() {
+    const ids = items.filter(i => i.checked).map(i => i.id)
+    if (ids.length === 0) return
+    const { error } = await supabase.from('checklists').delete().in('id', ids)
+    if (error) { showToast('삭제에 실패했어요', 'error'); return }
+    setItems(prev => prev.filter(i => !i.checked))
+    showToast(`${ids.length}개를 삭제했어요`)
   }
 
   async function addItem(text: string) {
@@ -252,7 +295,8 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
     const { data } = await supabase.from('checklists')
       .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'shopping' }])
       .select().single()
-    if (data) setItems(prev => [...prev, data])
+    if (data) { setItems(prev => [...prev, data]); showToast('추가했어요'); setNewText('') }
+    else { showToast('추가에 실패했어요', 'error') }
   }
 
   async function toggleItem(item: ShopItem) {
@@ -262,8 +306,27 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
   }
 
   async function deleteItem(id: string) {
-    await supabase.from('checklists').delete().eq('id', id)
+    const item = items.find(i => i.id === id)
+    if (!item) return
+    if (pendingDeleteRef.current) {
+      clearTimeout(undoTimerRef.current!)
+      await supabase.from('checklists').delete().eq('id', pendingDeleteRef.current.id)
+    }
     setItems(prev => prev.filter(i => i.id !== id))
+    const timer = setTimeout(async () => {
+      await supabase.from('checklists').delete().eq('id', id)
+      pendingDeleteRef.current = null
+    }, 3000)
+    undoTimerRef.current = timer
+    pendingDeleteRef.current = { id, item }
+    showToast('삭제했어요', 'success', {
+      label: '실행 취소',
+      onClick: () => {
+        clearTimeout(timer)
+        setItems(prev => [...prev, item])
+        pendingDeleteRef.current = null
+      },
+    })
   }
 
   async function generateAI() {
@@ -294,8 +357,16 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
 
   async function addAllAiItems() {
     if (!aiResult) return
-    const allItems = aiResult.flatMap(g => g.items)
-    for (const text of allItems) await addItem(text)
+    const newItems = aiResult.flatMap(g => g.items).filter(text => !addedTexts.has(text))
+    if (newItems.length === 0) { setAiResult(null); return }
+    const inserts = newItems.map(text => ({ trip_id: tripId, text, checked: false, created_by: userName, type: 'shopping' }))
+    const { data } = await supabase.from('checklists').insert(inserts).select()
+    if (data) {
+      setItems(prev => [...prev, ...data])
+      showToast(`${newItems.length}개를 추가했어요`)
+    } else {
+      showToast('추가에 실패했어요', 'error')
+    }
     setAiResult(null)
   }
 
@@ -305,17 +376,29 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
 
   return (
     <div className="space-y-4">
+      <form onSubmit={e => { e.preventDefault(); if (newText.trim()) addItem(newText.trim()) }} className="flex gap-2">
+        <input
+          placeholder="쇼핑 아이템 추가"
+          value={newText}
+          onChange={e => setNewText(e.target.value)}
+          className={`flex-1 ${inputCls}`}
+        />
+        <button type="submit" className={btn.submit}>추가</button>
+      </form>
+
       {/* 상단 버튼 행 */}
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={() => setShowRecommend(v => !v)}
           className={`flex-1 ${btn.toggle(showRecommend)}`}
         >
-          🛒 쇼핑 추천
+          🛒 쇼핑 추천 {showRecommend ? '닫기' : '보기'}
         </button>
         <button
+          type="button"
           onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-          className={btn.ai(showAI)}
+          className={btn.toggle(showAI)}
         >
           ✨ AI
         </button>
@@ -335,7 +418,9 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
                   <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {group.items.map(p => (
-                      <span key={p} className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full">{p}</span>
+                      addedTexts.has(p)
+                        ? <span key={p} className="px-3 py-1.5 bg-gray-100 text-gray-400 text-xs rounded-full line-through">{p}</span>
+                        : <button type="button" key={p} onClick={() => addItem(p)} className={btn.chip}>+ {p}</button>
                     ))}
                   </div>
                 </div>
@@ -351,7 +436,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
 
       {/* 추천 섹션 */}
       {showRecommend && (
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+        <div className={`${card.section} space-y-3`}>
           {presetData ? (
             presetData.map(group => {
               const available = group.items.filter(p => !addedTexts.has(p))
@@ -361,8 +446,7 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
                   <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {available.map(p => (
-                      <button key={p} onClick={() => addItem(p)}
-                        className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
+                      <button type="button" key={p} onClick={() => addItem(p)} className={btn.chip}>
                         + {p}
                       </button>
                     ))}
@@ -383,37 +467,54 @@ export default function ShoppingTab({ tripId, userName, destination }: Props) {
         <EmptyState icon="🛍" title="아직 쇼핑 리스트가 비어있어요" subtitle="위에서 담고 싶은 것을 추가해보세요" />
       ) : (
         <>
-          <div className="flex items-center justify-between px-1">
+          <div className="px-1 space-y-2">
             <p className="text-sm font-semibold text-gray-700">내 쇼핑 리스트</p>
-            <span className="text-xs text-gray-400">{checkedItems.length}/{items.length} 완료</span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">{checkedItems.length}/{items.length} 완료</span>
+              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${(checkedItems.length / items.length) * 100}%` }} />
+              </div>
+            </div>
           </div>
           <div className="space-y-2">
             {uncheckedItems.map(item => (
-              <div key={item.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3">
-                <button onClick={() => toggleItem(item)}
+              <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3`}>
+                <button type="button" onClick={() => toggleItem(item)}
                   className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
                 <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
+                <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
               </div>
             ))}
           </div>
           {checkedItems.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-gray-400 px-1">구매 완료 {checkedItems.length}개</p>
+              <div className="flex items-center justify-between px-1">
+                <p className="text-xs text-gray-400">구매 완료 {checkedItems.length}개</p>
+                {confirmDeleteAll ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">삭제할까요?</span>
+                    <button type="button" onClick={() => { deleteAllChecked(); setConfirmDeleteAll(false) }} className="text-xs text-red-400 hover:text-red-500 transition font-medium">확인</button>
+                    <button type="button" onClick={() => setConfirmDeleteAll(false)} className="text-xs text-gray-400 hover:text-gray-500 transition">취소</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setConfirmDeleteAll(true)} className="text-xs text-red-400 hover:text-red-500 transition">전체 삭제</button>
+                )}
+              </div>
               {checkedItems.map(item => (
-                <div key={item.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 opacity-50">
-                  <button onClick={() => toggleItem(item)}
+                <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3 opacity-50`}>
+                  <button type="button" onClick={() => toggleItem(item)}
                     className="w-5 h-5 rounded-full bg-indigo-400 flex-shrink-0 flex items-center justify-center">
                     <span className="text-white text-xs">✓</span>
                   </button>
                   <span className="flex-1 text-sm text-gray-400 line-through">{item.text}</span>
-                  <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
+                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
                 </div>
               ))}
             </div>
           )}
         </>
       )}
+      {toast && <Toast message={toast.message} type={toast.type} action={toast.action} />}
     </div>
   )
 }

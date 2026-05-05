@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
+import Toast, { useToast } from '../components/Toast'
+import { btn, card, input as inputCls } from '../lib/design'
 
 interface CheckItem {
   id: string
@@ -52,8 +54,16 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   const [loading, setLoading] = useState(true)
   const [newText, setNewText] = useState('')
   const [showPresets, setShowPresets] = useState(false)
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+  const { toast, showToast } = useToast()
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingDeleteRef = useRef<{ id: string; item: CheckItem } | null>(null)
 
   useEffect(() => { fetchItems() }, [tripId])
+
+  useEffect(() => {
+    if (items.filter(i => i.checked).length === 0) setConfirmDeleteAll(false)
+  }, [items])
 
   useEffect(() => {
     const channel = supabase
@@ -72,9 +82,19 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   }, [tripId])
 
   async function fetchItems() {
-    const { data } = await supabase.from('checklists').select('*').eq('trip_id', tripId).eq('type', 'packing').order('created_at')
+    const { data, error } = await supabase.from('checklists').select('*').eq('trip_id', tripId).eq('type', 'packing').order('created_at')
+    if (error) showToast('체크리스트를 불러오지 못했어요', 'error')
     setItems(data ?? [])
     setLoading(false)
+  }
+
+  async function deleteAllChecked() {
+    const ids = items.filter(i => i.checked).map(i => i.id)
+    if (ids.length === 0) return
+    const { error } = await supabase.from('checklists').delete().in('id', ids)
+    if (error) { showToast('삭제에 실패했어요', 'error'); return }
+    setItems(prev => prev.filter(i => !i.checked))
+    showToast(`${ids.length}개를 삭제했어요`)
   }
 
   async function addItem(text: string) {
@@ -82,8 +102,8 @@ export default function ChecklistTab({ tripId, userName }: Props) {
     const { data } = await supabase.from('checklists')
       .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'packing' }])
       .select().single()
-    if (data) setItems(prev => [...prev, data])
-    setNewText('')
+    if (data) { setItems(prev => [...prev, data]); showToast('준비물을 추가했어요'); setNewText('') }
+    else { showToast('추가에 실패했어요', 'error') }
   }
 
   async function toggleItem(item: CheckItem) {
@@ -92,8 +112,27 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   }
 
   async function deleteItem(id: string) {
-    await supabase.from('checklists').delete().eq('id', id)
+    const item = items.find(i => i.id === id)
+    if (!item) return
+    if (pendingDeleteRef.current) {
+      clearTimeout(undoTimerRef.current!)
+      await supabase.from('checklists').delete().eq('id', pendingDeleteRef.current.id)
+    }
     setItems(prev => prev.filter(i => i.id !== id))
+    const timer = setTimeout(async () => {
+      await supabase.from('checklists').delete().eq('id', id)
+      pendingDeleteRef.current = null
+    }, 3000)
+    undoTimerRef.current = timer
+    pendingDeleteRef.current = { id, item }
+    showToast('삭제했어요', 'success', {
+      label: '실행 취소',
+      onClick: () => {
+        clearTimeout(timer)
+        setItems(prev => [...prev, item])
+        pendingDeleteRef.current = null
+      },
+    })
   }
 
   const checkedCount = items.filter(i => i.checked).length
@@ -106,20 +145,21 @@ export default function ChecklistTab({ tripId, userName }: Props) {
           placeholder="준비물 추가"
           value={newText}
           onChange={e => setNewText(e.target.value)}
-          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+          className={`flex-1 ${inputCls}`}
         />
-        <button type="submit" className="px-4 py-2.5 bg-indigo-500 text-white rounded-xl text-sm font-semibold hover:bg-indigo-600">추가</button>
+        <button type="submit" className={btn.submit}>추가</button>
       </form>
 
       <button
+        type="button"
         onClick={() => setShowPresets(v => !v)}
-        className="w-full py-2.5 rounded-xl border border-dashed border-indigo-300 text-indigo-500 text-sm hover:bg-indigo-50 transition"
+        className={`w-full ${btn.toggle(showPresets)}`}
       >
-        {showPresets ? '▲ 추천 준비물 닫기' : '✨ 추천 준비물 보기'}
+        ✨ 추천 준비물 {showPresets ? '닫기' : '보기'}
       </button>
 
       {showPresets && (
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+        <div className={`${card.section} space-y-4`}>
           {PRESET_GROUPS.map(group => {
             const available = group.items.filter(p => !items.some(i => i.text === p))
             if (available.length === 0) return null
@@ -128,8 +168,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
                 <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {available.map(p => (
-                    <button key={p} onClick={() => addItem(p)}
-                      className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs rounded-full hover:bg-indigo-100 transition">
+                    <button type="button" key={p} onClick={() => addItem(p)} className={btn.chip}>
                       + {p}
                     </button>
                   ))}
@@ -146,41 +185,51 @@ export default function ChecklistTab({ tripId, userName }: Props) {
         <EmptyState icon="✅" title="준비물을 추가해보세요" subtitle="또는 추천 준비물 보기를 눌러보세요" />
       ) : (
         <>
-          {items.length > 0 && (
-            <div className="flex items-center justify-between px-1">
-              <span className="text-sm text-gray-500">{checkedCount}/{items.length} 완료</span>
-              <div className="flex-1 mx-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${items.length ? (checkedCount / items.length) * 100 : 0}%` }} />
-              </div>
+          <div className="flex items-center justify-between px-1">
+            <span className="text-sm text-gray-500">{checkedCount}/{items.length} 완료</span>
+            <div className="flex-1 mx-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${(checkedCount / items.length) * 100}%` }} />
             </div>
-          )}
+          </div>
 
           <div className="space-y-2">
             {remaining.map(item => (
-              <div key={item.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3">
-                <button onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
+              <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3`}>
+                <button type="button" onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
                 <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
+                <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
               </div>
             ))}
           </div>
 
           {checked.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-gray-400 px-1">완료 {checked.length}개</p>
+              <div className="flex items-center justify-between px-1">
+                <p className="text-xs text-gray-400">완료 {checked.length}개</p>
+                {confirmDeleteAll ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">삭제할까요?</span>
+                    <button type="button" onClick={() => { deleteAllChecked(); setConfirmDeleteAll(false) }} className="text-xs text-red-400 hover:text-red-500 transition font-medium">확인</button>
+                    <button type="button" onClick={() => setConfirmDeleteAll(false)} className="text-xs text-gray-400 hover:text-gray-500 transition">취소</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setConfirmDeleteAll(true)} className="text-xs text-red-400 hover:text-red-500 transition">전체 삭제</button>
+                )}
+              </div>
               {checked.map(item => (
-                <div key={item.id} className="bg-white rounded-xl px-4 py-3 shadow-sm flex items-center gap-3 opacity-50">
-                  <button onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full bg-indigo-400 flex-shrink-0 flex items-center justify-center">
+                <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3 opacity-50`}>
+                  <button type="button" onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full bg-indigo-400 flex-shrink-0 flex items-center justify-center">
                     <span className="text-white text-xs">✓</span>
                   </button>
                   <span className="flex-1 text-sm text-gray-400 line-through">{item.text}</span>
-                  <button onClick={() => deleteItem(item.id)} className="p-2 text-gray-300 hover:text-red-400 transition text-xs">삭제</button>
+                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
                 </div>
               ))}
             </div>
           )}
         </>
       )}
+      {toast && <Toast message={toast.message} type={toast.type} action={toast.action} />}
     </div>
   )
 }

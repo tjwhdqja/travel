@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { btn, card, input as inputCls } from '../lib/design'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -21,8 +22,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-4">
+      <div className={`${card.base} p-8 w-full max-w-sm`}>
         <div className="text-center mb-8">
           <div className="text-4xl mb-3">✈️</div>
           <h1 className="text-2xl font-bold text-gray-800">우리들의 여행</h1>
@@ -38,7 +39,7 @@ export default function LoginPage() {
               onChange={e => setEmail(e.target.value)}
               placeholder="이메일 입력"
               required
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800"
+              className={inputCls}
             />
           </div>
           <div>
@@ -49,18 +50,18 @@ export default function LoginPage() {
               onChange={e => setPassword(e.target.value)}
               placeholder="비밀번호 입력"
               required
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800"
+              className={inputCls}
             />
           </div>
 
           {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
+            <p className="text-red-400 text-sm text-center">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 rounded-xl transition disabled:opacity-50"
+            className={btn.primary}
           >
             {loading ? '로그인 중...' : '로그인'}
           </button>
