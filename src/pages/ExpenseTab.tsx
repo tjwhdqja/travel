@@ -25,7 +25,6 @@ interface Props {
   userName: string
   budget?: number
   members: string[]
-  startDate?: string
 }
 
 type FormState = {
@@ -55,6 +54,9 @@ function getCategoryEmoji(cat: string) {
   return CATEGORIES.find(c => c.id === cat)?.emoji ?? '💳'
 }
 
+function isPersonal(exp: Expense) {
+  return exp.split_with.length === 1 && exp.split_with[0] === exp.paid_by && exp.category !== '정산'
+}
 
 function calcKRW(amount: number, currency: string, rates: Record<string, number>): number {
   if (currency === 'KRW') return amount
@@ -167,7 +169,19 @@ function ExpenseForm({ form, setForm, members, rates, onSubmit, submitLabel, onC
       </div>
 
       <div>
-        <label className="text-xs text-gray-500 mb-2 block">나눌 사람</label>
+        <div className="flex items-center mb-2">
+          <label className="text-xs text-gray-500">나눌 사람</label>
+          <div className="ml-auto flex gap-1.5">
+            <button type="button"
+              onClick={() => setForm({ ...form, split_with: [...members] })}
+              className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md"
+            >전원</button>
+            <button type="button"
+              onClick={() => setForm({ ...form, split_with: [form.paid_by] })}
+              className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-md"
+            >나만</button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           {members.map(m => (
             <PillButton key={m} label={m}
@@ -177,8 +191,8 @@ function ExpenseForm({ form, setForm, members, rates, onSubmit, submitLabel, onC
           ))}
         </div>
         {form.split_with.length > 0 && form.amount && (
-          <p className="text-xs text-gray-400 mt-1.5">
-            1인당 {Math.round(calcKRW(Number(form.amount), form.currency, rates) / form.split_with.length).toLocaleString()}원
+          <p className="text-xs text-indigo-400 font-medium mt-1.5 bg-indigo-50 rounded-lg px-2.5 py-1.5">
+            {form.split_with.length}명 분담 · 1인당 {Math.round(calcKRW(Number(form.amount), form.currency, rates) / form.split_with.length).toLocaleString()}원
           </p>
         )}
       </div>
@@ -217,33 +231,56 @@ function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdi
   }
 
   const krw = calcKRW(exp.amount, exp.currency, rates)
+  const personal = isPersonal(exp)
 
   return (
-    <div className="flex items-start gap-2">
+    <div className={`flex items-start gap-2 ${personal ? 'opacity-60' : ''}`}>
       <div className="w-5 flex-shrink-0 flex justify-center pt-3">
-        <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 ring-2 ring-white shadow-sm" />
+        <div className={`w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-sm ${personal ? 'bg-gray-300' : 'bg-indigo-400'}`} />
       </div>
       <div className={`flex-1 rounded-xl px-3 py-2.5 shadow-sm flex items-center gap-2 min-w-0 ${exp.category === '정산' ? 'bg-indigo-50' : 'bg-white'}`}>
         <span className="text-lg leading-none flex-shrink-0">{getCategoryEmoji(exp.category)}</span>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-gray-800 text-sm">{exp.title}</p>
+          <p className="font-medium text-gray-800 text-sm flex items-center gap-1.5">
+            {exp.title}
+            {personal && <span className="text-xs font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">개인</span>}
+          </p>
           <p className="text-xs text-gray-400 mt-0.5">
-            {exp.paid_by} 결제 · {exp.split_with.join(', ')} 분담
-            {exp.payment_method && (
-              <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>
+            {personal ? (
+              <>{exp.paid_by} 결제 · 정산 미포함</>
+            ) : (
+              <>
+                <span className="text-indigo-500 font-semibold">{exp.paid_by}</span> 결제
+                {exp.split_with.length === members.length ? ' · 전원 분담' : ''}
+                {exp.payment_method && (
+                  <span className="ml-1 text-gray-300">· {exp.payment_method === '카드' ? '💳' : '💵'}</span>
+                )}
+              </>
             )}
           </p>
+          {!personal && exp.split_with.length < members.length && (
+            <div className="flex gap-1 mt-1 flex-nowrap overflow-hidden">
+              {exp.split_with.slice(0, 3).map(name => (
+                <span key={name} className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full whitespace-nowrap">{name}</span>
+              ))}
+              {exp.split_with.length > 3 && (
+                <span className="text-[10px] font-semibold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full whitespace-nowrap">+{exp.split_with.length - 3}명</span>
+              )}
+            </div>
+          )}
         </div>
         <div className="text-right shrink-0 max-w-[40%]">
-          <p className="font-semibold text-gray-800 text-sm break-all">
+          <p className={`font-semibold text-sm break-all ${personal ? 'text-gray-400' : 'text-gray-800'}`}>
             {exp.amount.toLocaleString()} {exp.currency}
           </p>
           {exp.currency !== 'KRW' && rates['KRW'] && (
             <p className="text-xs text-gray-400">≈ {krw.toLocaleString()}원</p>
           )}
-          <p className="text-xs text-gray-400">
-            1인 {Math.round(krw / exp.split_with.length).toLocaleString()}원
-          </p>
+          {!personal && (
+            <p className="text-xs text-gray-400">
+              1인 {Math.round(krw / exp.split_with.length).toLocaleString()}원
+            </p>
+          )}
         </div>
         <HamburgerMenu items={[
           { label: '수정', onClick: () => onStartEdit(exp) },
@@ -260,7 +297,7 @@ const emptyForm = (userName: string, members: string[]): FormState => ({
   date: new Date().toISOString().split('T')[0],
 })
 
-export default function ExpenseTab({ tripId, userName, budget = 0, members, startDate }: Props) {
+export default function ExpenseTab({ tripId, userName, budget = 0, members }: Props) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [rates, setRates] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -273,6 +310,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
   const [preTo, setPreTo] = useState('')
   const [preAmount, setPreAmount] = useState('')
   const [form, setForm] = useState<FormState>(emptyForm(userName, members))
+  const [ratesUpdatedAt, setRatesUpdatedAt] = useState<Date | null>(null)
 
   useEffect(() => {
     if (userName) fetchAll()
@@ -291,12 +329,14 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
     return () => { supabase.removeChannel(channel) }
   }, [tripId])
 
-  useEffect(() => {
+  function fetchRates() {
     fetch('https://open.er-api.com/v6/latest/USD')
       .then(r => r.json())
-      .then(data => setRates(data.rates ?? {}))
+      .then(data => { setRates(data.rates ?? {}); setRatesUpdatedAt(new Date()) })
       .catch(() => {})
-  }, [])
+  }
+
+  useEffect(() => { fetchRates() }, [])
 
   function toKRW(amount: number, currency: string) {
     return calcKRW(amount, currency, rates)
@@ -393,6 +433,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
     const owed: Record<string, number> = {}
     members.forEach(m => { paid[m] = 0; owed[m] = 0 })
     expenses.forEach(exp => {
+      if (isPersonal(exp)) return
       const krw = toKRW(exp.amount, exp.currency)
       const share = krw / exp.split_with.length
       if (paid[exp.paid_by] !== undefined) paid[exp.paid_by] += krw
@@ -429,18 +470,13 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
     return exp.date ?? exp.created_at.split('T')[0]
   }
 
-  function getDayNumber(dateStr: string) {
-    if (!startDate) return null
-    const diff = Math.round((new Date(dateStr + 'T00:00:00').getTime() - new Date(startDate + 'T00:00:00').getTime()) / 86400000) + 1
-    return diff >= 1 ? diff : null
-  }
 
   function formatDateHeader(dateStr: string) {
     return new Date(dateStr + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
   }
 
   const groupedExpenses = (() => {
-    const sorted = [...expenses].sort((a, b) => getExpenseDate(b).localeCompare(getExpenseDate(a)))
+    const sorted = [...expenses].filter(e => e.category !== '정산').sort((a, b) => getExpenseDate(b).localeCompare(getExpenseDate(a)))
     const groups: { date: string; items: Expense[] }[] = []
     sorted.forEach(exp => {
       const date = getExpenseDate(exp)
@@ -451,11 +487,14 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
     return groups
   })()
 
-  const totalKRW = expenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+  const totalKRW = expenses.filter(e => e.category !== '정산').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
   const remaining = budget > 0 ? budget - totalKRW : null
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
   const balances = calcBalances()
   const settlements = calcSettlement()
+  const personalExpenses = expenses.filter(isPersonal)
+  const personalTotal = Math.round(personalExpenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0))
+  const hasForeignCurrency = expenses.some(e => e.currency !== 'KRW')
 
   return (
     <div className="space-y-4">
@@ -497,9 +536,22 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full transition-all ${budgetPct >= 100 ? 'bg-red-400' : budgetPct >= 80 ? 'bg-yellow-400' : 'bg-indigo-400'}`} style={{ width: `${budgetPct}%` }} />
               </div>
-              <p className={`text-xs ${remaining! < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                {remaining! < 0 ? `${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs ${remaining! < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                  {remaining! < 0 ? `${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
+                </p>
+                <button onClick={fetchRates} className="flex items-center gap-1 bg-indigo-50 text-indigo-600 text-xs font-bold px-2.5 py-1 rounded-lg border border-indigo-100">
+                  🔄 환율 갱신
+                </button>
+              </div>
+            </div>
+          )}
+
+          {hasForeignCurrency && (
+            <div className="flex items-center bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <span className="text-xs text-amber-800">
+                💱 환율 마지막 갱신: {ratesUpdatedAt ? `${Math.round((Date.now() - ratesUpdatedAt.getTime()) / 60000)}분 전` : '미갱신'}
+              </span>
             </div>
           )}
 
@@ -568,16 +620,12 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
               )}
 
               {groupedExpenses.map(({ date, items }) => {
-                const dayNum = getDayNumber(date)
+                const dayTotal = items.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
                 return (
                   <div key={date}>
                     <div className="flex items-center gap-2 mb-2">
-                      {dayNum !== null && (
-                        <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2.5 py-1 rounded-full">
-                          Day {dayNum}
-                        </span>
-                      )}
                       <span className="text-sm text-gray-500">{formatDateHeader(date)}</span>
+                      <span className="ml-auto text-sm font-bold text-gray-700">{Math.round(dayTotal).toLocaleString()}원</span>
                     </div>
                     <div className="space-y-2">
                       {items.map(exp => (
@@ -608,78 +656,120 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, star
             <p className="text-center text-gray-400 py-8 text-sm">멤버를 추가해주세요</p>
           ) : (
             <>
+              {personalExpenses.length > 0 && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  <span className="text-xs text-amber-800">ℹ️ 개인 지출 {personalExpenses.length}건 ({personalTotal.toLocaleString()}원)은 정산에서 제외됐어요</span>
+                </div>
+              )}
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-50">
                   <p className="text-sm font-semibold text-gray-700">잔액 요약</p>
                 </div>
                 {balances.map(b => (
-                  <div key={b.name} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0">
-                    <span className="text-sm font-medium text-gray-800 w-20 flex-shrink-0">{b.name}</span>
-                    <div className="flex-1 text-xs text-gray-400 space-y-0.5">
-                      <p>낸 금액 <span className="text-gray-600">{Math.round(b.paid).toLocaleString()}원</span></p>
-                      <p>부담액 <span className="text-gray-600">{Math.round(b.owed).toLocaleString()}원</span></p>
+                  <div key={b.name} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0 gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold shrink-0">
+                      {b.name.slice(0, 1)}
                     </div>
-                    <span className={`text-sm font-bold ${b.net > 0 ? 'text-emerald-500' : b.net < 0 ? 'text-red-400' : 'text-gray-400'}`}>
-                      {b.net > 0 ? `+${Math.round(b.net).toLocaleString()}원` : b.net < 0 ? `${Math.round(b.net).toLocaleString()}원` : '정산 완료'}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800">{b.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 truncate">
+                        {Math.round(b.paid).toLocaleString()}원 냈고, {Math.round(b.owed).toLocaleString()}원 썼어요
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {b.net > 0 ? (
+                        <>
+                          <p className="text-xs text-emerald-500 font-medium">받을 금액</p>
+                          <p className="text-sm font-bold text-emerald-500">+{Math.round(b.net).toLocaleString()}원</p>
+                        </>
+                      ) : b.net < 0 ? (
+                        <>
+                          <p className="text-xs text-red-400 font-medium">낼 금액</p>
+                          <p className="text-sm font-bold text-red-400">{Math.round(b.net).toLocaleString()}원</p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-gray-400">정산 완료</p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <button
-                onClick={() => setShowPreSettle(v => !v)}
-                className="w-full py-2.5 rounded-xl border border-dashed border-gray-200 text-sm text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition"
-              >
-                💸 선 정산 추가
-              </button>
-              {showPreSettle && (
-                <div className="bg-white rounded-2xl shadow-sm p-4">
-                  <form onSubmit={addPreSettlement} className="space-y-3">
-                    <div>
-                      <label className="text-xs text-gray-500 mb-2 block">보낸 사람</label>
-                      <div className="flex flex-wrap gap-2">
-                        {members.map(m => (
-                          <PillButton key={m} label={m} selected={preFrom === m} onClick={() => setPreFrom(m)} />
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 mb-2 block">받은 사람</label>
-                      <div className="flex flex-wrap gap-2">
-                        {members.map(m => (
-                          <PillButton key={m} label={m} selected={preTo === m} onClick={() => setPreTo(m)} />
-                        ))}
-                      </div>
-                    </div>
-                    <input
-                      type="number"
-                      placeholder="금액 (KRW)"
-                      value={preAmount}
-                      onChange={e => setPreAmount(e.target.value)}
-                      required
-                      className={inputCls}
-                    />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setShowPreSettle(false)} className={btn.secondary}>취소</button>
-                      <button type="submit" className={btn.action}>추가</button>
-                    </div>
-                  </form>
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">송금 기록</p>
+                  <button onClick={() => setShowPreSettle(v => !v)} className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                    + 기록 추가
+                  </button>
                 </div>
-              )}
-
-              <p className="text-xs font-semibold text-gray-400 px-1">이체 내역</p>
-              {settlements.length === 0 ? (
-                <EmptyState icon="🎉" title="정산할 내용이 없어요" />
-              ) : (
-                settlements.map((s, i) => (
-                  <div key={i} className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3">
-                    <span className="text-sm font-medium text-gray-800">{s.from}</span>
-                    <span className="text-gray-300 text-sm">→</span>
-                    <span className="text-sm font-medium text-indigo-600">{s.to}</span>
-                    <span className="ml-auto font-bold text-gray-800">{s.amount.toLocaleString()}원</span>
+                {showPreSettle && (
+                  <div className="p-4 border-b border-gray-50">
+                    <form onSubmit={addPreSettlement} className="space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-500 mb-2 block">보낸 사람</label>
+                        <div className="flex flex-wrap gap-2">
+                          {members.map(m => (
+                            <PillButton key={m} label={m} selected={preFrom === m} onClick={() => setPreFrom(m)} />
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 mb-2 block">받은 사람</label>
+                        <div className="flex flex-wrap gap-2">
+                          {members.map(m => (
+                            <PillButton key={m} label={m} selected={preTo === m} onClick={() => setPreTo(m)} />
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        type="number"
+                        placeholder="금액 (KRW)"
+                        value={preAmount}
+                        onChange={e => setPreAmount(e.target.value)}
+                        required
+                        className={inputCls}
+                      />
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setShowPreSettle(false)} className={btn.secondary}>취소</button>
+                        <button type="submit" className={btn.action}>추가</button>
+                      </div>
+                    </form>
                   </div>
-                ))
-              )}
+                )}
+                {/* 미완료 이체 (앱 계산) — 회색 배경 */}
+                {settlements.map((s, i) => (
+                  <div key={i} className="flex items-center px-4 py-3 border-b border-gray-50 gap-2 bg-gray-50">
+                    <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                    <span className="text-sm font-semibold text-gray-400">{s.from}</span>
+                    <span className="text-gray-300 text-xs">→</span>
+                    <span className="text-sm font-semibold text-indigo-300">{s.to}</span>
+                    <span className="ml-auto text-sm font-bold text-gray-500">{s.amount.toLocaleString()}원</span>
+                    <button
+                      onClick={() => { setPreFrom(s.from); setPreTo(s.to); setPreAmount(String(s.amount)); setShowPreSettle(true) }}
+                      className="bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full shrink-0"
+                    >
+                      송금함
+                    </button>
+                  </div>
+                ))}
+                {/* 완료된 송금 기록 — 흰 배경 dimmed */}
+                {expenses.filter(e => e.category === '정산').map(exp => {
+                  const dateStr = new Date(exp.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+                  return (
+                    <div key={exp.id} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0 gap-2 opacity-50">
+                      <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      <span className="text-sm font-semibold text-gray-500">{exp.paid_by}</span>
+                      <span className="text-gray-300 text-xs">→</span>
+                      <span className="text-sm font-semibold text-indigo-400">{exp.split_with[0]}</span>
+                      <span className="ml-auto text-sm font-bold text-gray-400 line-through">{exp.amount.toLocaleString()}원</span>
+                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md shrink-0">{dateStr}</span>
+                    </div>
+                  )
+                })}
+                {settlements.length === 0 && expenses.filter(e => e.category === '정산').length === 0 && !showPreSettle && (
+                  <p className="px-4 py-4 text-sm text-gray-400 text-center">🎉 정산할 내용이 없어요</p>
+                )}
+              </div>
             </>
           )}
         </div>
