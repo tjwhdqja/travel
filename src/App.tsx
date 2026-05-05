@@ -5,6 +5,7 @@ import type { Session } from '@supabase/supabase-js'
 import LoginPage from './pages/LoginPage'
 import NicknameSetupPage from './pages/NicknameSetupPage'
 import TripsPage from './pages/TripsPage'
+import Spinner from './components/Spinner'
 
 export default function App() {
   const navigate = useNavigate()
@@ -37,7 +38,7 @@ export default function App() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-400">로딩 중...</div>
+        <Spinner />
       </div>
     )
   }

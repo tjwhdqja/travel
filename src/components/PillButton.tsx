@@ -9,7 +9,7 @@ export default function PillButton({ label, selected, onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-sm transition ${
+      className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${
         selected ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-600'
       }`}
     >

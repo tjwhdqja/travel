@@ -13,7 +13,7 @@ export default function EmptyState({ icon, title, subtitle }: Props) {
         {icon}
       </div>
       <p className="text-sm font-medium text-gray-400">{title}</p>
-      {subtitle && <p className="text-xs text-gray-300 mt-1">{subtitle}</p>}
+      {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
     </div>
   )
 }

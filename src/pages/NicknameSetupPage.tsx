@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { btn, input as inputCls } from '../lib/design'
 
 interface Props {
   userId: string
@@ -9,6 +10,7 @@ interface Props {
 export default function NicknameSetupPage({ userId, onComplete }: Props) {
   const [nickname, setNickname] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const canSubmit = nickname.trim().length > 0 && !loading
 
@@ -16,16 +18,21 @@ export default function NicknameSetupPage({ userId, onComplete }: Props) {
     e.preventDefault()
     if (!canSubmit) return
     setLoading(true)
+    setError('')
     const { error } = await supabase
       .from('profiles')
-      .insert([{ id: userId, nickname: nickname.trim() }])
-    if (!error) onComplete(nickname.trim())
+      .upsert([{ id: userId, nickname: nickname.trim() }])
+    if (error) {
+      setError('저장에 실패했어요. 다시 시도해주세요.')
+    } else {
+      onComplete(nickname.trim())
+    }
     setLoading(false)
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-6">
-      <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">👋</div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">처음 오셨군요!</h1>
@@ -39,16 +46,13 @@ export default function NicknameSetupPage({ userId, onComplete }: Props) {
             onChange={e => setNickname(e.target.value)}
             maxLength={10}
             autoFocus
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 text-center text-lg"
+            className={`${inputCls} text-center text-lg py-3`}
           />
+          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
           <button
             type="submit"
             disabled={!canSubmit}
-            className={`w-full py-3 rounded-xl text-sm font-semibold transition ${
-              canSubmit
-                ? 'bg-indigo-500 hover:bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            }`}
+            className={btn.primary}
           >
             {loading ? '저장 중...' : '시작하기'}
           </button>
