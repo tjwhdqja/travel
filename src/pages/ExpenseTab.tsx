@@ -339,6 +339,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   const { toast, showToast } = useToast()
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingDeleteRef = useRef<{ id: string; item: Expense } | null>(null)
+  const completeSubmittingRef = useRef(false)
 
   useEffect(() => {
     if (!isActive) { setShowForm(false); setEditingId(null); setShowMemberStats(false); setShowPreSettle(false) }
@@ -502,8 +503,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   }
 
   async function completeSettlement(from: string, to: string, amount: number) {
-    if (submitting) return
-    setSubmitting(true)
+    if (completeSubmittingRef.current) return
+    completeSubmittingRef.current = true
     const { data } = await supabase
       .from('expenses')
       .insert([{
@@ -519,7 +520,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
       .select().single()
     if (data) { setExpenses(prev => [data, ...prev]); showToast('송금을 기록했어요') }
     else { showToast('기록에 실패했어요', 'error') }
-    setSubmitting(false)
+    completeSubmittingRef.current = false
   }
 
   function calcBalances() {
@@ -844,7 +845,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                     <button
                       type="button"
                       onClick={() => completeSettlement(s.from, s.to, s.amount)}
-                      disabled={submitting}
                       className={`${btn.chipSolid} shrink-0`}
                     >
                       송금함
@@ -862,6 +862,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                       <span className="text-sm font-semibold text-indigo-400">{exp.split_with[0]}</span>
                       <span className="ml-auto text-sm font-bold text-gray-400 line-through">{exp.amount.toLocaleString()}원</span>
                       <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md shrink-0">{dateStr}</span>
+                      <button type="button" onClick={() => deleteExpense(exp.id)} className={btn.danger}>삭제</button>
                     </div>
                   )
                 })}

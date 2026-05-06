@@ -55,6 +55,8 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   const [newText, setNewText] = useState('')
   const [showPresets, setShowPresets] = useState(false)
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState('')
   const { toast, showToast } = useToast()
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingDeleteRef = useRef<{ id: string; item: CheckItem } | null>(null)
@@ -109,6 +111,13 @@ export default function ChecklistTab({ tripId, userName }: Props) {
   async function toggleItem(item: CheckItem) {
     const { data } = await supabase.from('checklists').update({ checked: !item.checked }).eq('id', item.id).select().single()
     if (data) setItems(prev => prev.map(i => i.id === item.id ? data : i))
+  }
+
+  async function saveEdit(id: string) {
+    if (!editingText.trim()) return
+    const { data } = await supabase.from('checklists').update({ text: editingText.trim() }).eq('id', id).select().single()
+    if (data) { setItems(prev => prev.map(i => i.id === id ? data : i)); setEditingId(null) }
+    else { showToast('수정에 실패했어요', 'error') }
   }
 
   async function deleteItem(id: string) {
@@ -193,13 +202,27 @@ export default function ChecklistTab({ tripId, userName }: Props) {
           </div>
 
           <div className="space-y-2">
-            {remaining.map(item => (
-              <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3`}>
-                <button type="button" onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
-                <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
-              </div>
-            ))}
+            {remaining.map(item => {
+              if (editingId === item.id) {
+                return (
+                  <div key={item.id} className={`${card.item} px-4 py-3`}>
+                    <form onSubmit={e => { e.preventDefault(); saveEdit(item.id) }} className="flex gap-2 items-center">
+                      <input autoFocus value={editingText} onChange={e => setEditingText(e.target.value)} className={`flex-1 ${inputCls}`} />
+                      <button type="submit" className={btn.inlineSolid}>저장</button>
+                      <button type="button" onClick={() => setEditingId(null)} className={btn.inlineGhost}>취소</button>
+                    </form>
+                  </div>
+                )
+              }
+              return (
+                <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3`}>
+                  <button type="button" onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
+                  <span className="flex-1 text-sm text-gray-800">{item.text}</span>
+                  <button type="button" onClick={() => { setEditingId(item.id); setEditingText(item.text) }} className={btn.inlineGhost}>수정</button>
+                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
+                </div>
+              )
+            })}
           </div>
 
           {checked.length > 0 && (
