@@ -882,7 +882,6 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                       <span className="text-sm font-semibold text-indigo-400">{exp.split_with[0]}</span>
                       <span className="ml-auto text-sm font-bold text-gray-400 line-through">{exp.amount.toLocaleString()}원</span>
                       <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md shrink-0">{dateStr}</span>
-                      <button type="button" onClick={() => deleteExpense(exp.id)} className={btn.danger}>삭제</button>
                     </div>
                   )
                 })}
