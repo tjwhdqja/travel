@@ -529,6 +529,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
     members.forEach(m => { paid[m] = 0; owed[m] = 0 })
     expenses.forEach(exp => {
       if (isPersonal(exp)) return
+      if (exp.category === '정산') return
       const krw = toKRW(exp.amount, exp.currency)
       const share = krw / exp.split_with.length
       if (paid[exp.paid_by] !== undefined) paid[exp.paid_by] += krw
@@ -586,6 +587,14 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
   const balances = calcBalances()
   const settlements = calcSettlement()
+  const settledMap: Record<string, number> = {}
+  expenses.filter(e => e.category === '정산').forEach(e => {
+    const key = `${e.paid_by}→${e.split_with[0]}`
+    settledMap[key] = (settledMap[key] ?? 0) + e.amount
+  })
+  const remainingSettlements = settlements
+    .map(s => ({ ...s, remaining: Math.max(0, s.amount - (settledMap[`${s.from}→${s.to}`] ?? 0)) }))
+    .filter(s => s.remaining > 0)
   const personalExpenses = expenses.filter(isPersonal)
   const personalTotal = Math.round(personalExpenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0))
   const hasForeignCurrency = expenses.some(e => e.currency !== 'KRW')
@@ -835,16 +844,16 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                   </div>
                 )}
                 {/* 미완료 이체 (앱 계산) — 회색 배경 */}
-                {settlements.map(s => (
+                {remainingSettlements.map(s => (
                   <div key={`${s.from}-${s.to}`} className="flex items-center px-4 py-3 border-b border-gray-50 gap-2 bg-gray-50">
                     <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
                     <span className="text-sm font-semibold text-gray-400">{s.from}</span>
                     <span className="text-gray-300 text-xs">→</span>
                     <span className="text-sm font-semibold text-indigo-300">{s.to}</span>
-                    <span className="ml-auto text-sm font-bold text-gray-500">{s.amount.toLocaleString()}원</span>
+                    <span className="ml-auto text-sm font-bold text-gray-500">{s.remaining.toLocaleString()}원</span>
                     <button
                       type="button"
-                      onClick={() => completeSettlement(s.from, s.to, s.amount)}
+                      onClick={() => completeSettlement(s.from, s.to, s.remaining)}
                       className={`${btn.chipSolid} shrink-0`}
                     >
                       송금함
@@ -866,7 +875,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                     </div>
                   )
                 })}
-                {settlements.length === 0 && expenses.filter(e => e.category === '정산').length === 0 && !showPreSettle && (
+                {remainingSettlements.length === 0 && expenses.filter(e => e.category === '정산').length === 0 && !showPreSettle && (
                   <p className="px-4 py-4 text-sm text-gray-400 text-center">🎉 정산할 내용이 없어요</p>
                 )}
               </div>
