@@ -3,8 +3,7 @@ import AIResultPanel from '../components/AIResultPanel'
 import EmptyState from '../components/EmptyState'
 import Toast, { useToast } from '../components/Toast'
 import { btn, card } from '../lib/design'
-
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
+import { GROQ_API_KEY } from '../lib/groq'
 
 interface PlaceItem {
   name: string
@@ -508,9 +507,10 @@ export default function GuideTab({ destination, isActive = true }: Props) {
       <button
         type="button"
         onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
+        aria-expanded={showAI}
         className={`w-full ${btn.toggle(showAI)}`}
       >
-        ✨ AI 숨은 명소 추천
+        ✨ AI 추천 {showAI ? '닫기' : '보기'}
       </button>
 
       {showAI && (

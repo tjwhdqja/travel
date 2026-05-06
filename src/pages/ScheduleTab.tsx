@@ -7,8 +7,8 @@ import AIResultPanel from '../components/AIResultPanel'
 import { btn, card, input as inputCls, textarea as textareaCls } from '../lib/design'
 import Spinner from '../components/Spinner'
 import Toast, { useToast } from '../components/Toast'
+import { GROQ_API_KEY } from '../lib/groq'
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
 
 interface Schedule {
   id: string
@@ -35,7 +35,7 @@ type FormState = {
 
 const CATEGORIES = [
   { id: '교통', emoji: '✈️' },
-  { id: '식사', emoji: '🍽' },
+  { id: '식비', emoji: '🍽' },
   { id: '숙박', emoji: '🏨' },
   { id: '관광', emoji: '🎡' },
   { id: '쇼핑', emoji: '🛍' },
@@ -45,6 +45,7 @@ const CATEGORIES = [
 const AI_STYLES = ['관광 위주', '맛집 투어', '휴양/힐링', '쇼핑 위주', '액티비티']
 
 function getCategoryEmoji(category: string) {
+  if (category === '식사') return '🍽'
   return CATEGORIES.find(c => c.id === category)?.emoji ?? '📌'
 }
 
@@ -414,7 +415,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
 시작일: ${startDate}, 종료일: ${endDate}.
 아래 JSON 배열 형식으로만 답해 (설명 없이):
 [{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식사|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
-하루에 4~6개 일정. category는 반드시 교통/식사/숙박/관광/쇼핑/기타 중 하나.`
+하루에 4~6개 일정. category는 반드시 교통/식비/숙박/관광/쇼핑/기타 중 하나.`
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -520,6 +521,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
           <button
             type="button"
             onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false); setEditingId(null) }}
+            aria-expanded={showAI}
             className={`flex-1 ${btn.toggle(showAI)}`}
           >
             ✨ AI 생성
@@ -527,6 +529,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
           <button
             type="button"
             onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false); setEditingId(null) }}
+            aria-expanded={showNearby}
             className={`flex-1 ${btn.toggle(showNearby)}`}
           >
             📍 주변 추천

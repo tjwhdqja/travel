@@ -34,7 +34,7 @@ interface Props {
 
 export default function Toast({ message, type = 'success', action }: Props) {
   return (
-    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-3 max-w-[calc(100vw-3rem)] ${
+    <div role="alert" aria-live="assertive" className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-3 max-w-[calc(100vw-3rem)] ${
       type === 'success' ? 'bg-indigo-500' : 'bg-red-400'
     }`}>
       {message}

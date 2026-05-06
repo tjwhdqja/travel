@@ -58,7 +58,7 @@ function InviteButton({ tripId }: { tripId: string }) {
     <button
       type="button"
       onClick={invite}
-      title="친구 초대"
+      aria-label={copied ? "초대 링크 복사됨" : "여행에 친구 초대하기"}
       className="w-7 h-7 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors relative"
     >
       {copied ? (
@@ -150,11 +150,13 @@ export default function TripDetail() {
         </div>
       </header>
 
-      <div className="flex border-b border-gray-100 bg-white">
+      <div role="tablist" className="flex border-b border-gray-100 bg-white">
         {TABS.map(tab => (
           <button
             type="button"
             key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => { setActiveTab(tab.id); setMountedTabs(prev => new Set([...prev, tab.id])) }}
             className={`flex-1 py-2.5 flex flex-col items-center gap-1 transition ${
               activeTab === tab.id ? 'text-indigo-500 border-b-2 border-indigo-500' : 'text-gray-400'

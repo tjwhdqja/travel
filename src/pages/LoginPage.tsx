@@ -22,7 +22,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-4">
       <div className={`${card.base} p-8 w-full max-w-sm`}>
         <div className="text-center mb-8">
           <div className="text-4xl mb-3">✈️</div>
@@ -67,6 +67,6 @@ export default function LoginPage() {
           </button>
         </form>
       </div>
-    </div>
+    </main>
   )
 }

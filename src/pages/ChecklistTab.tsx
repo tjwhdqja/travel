@@ -105,7 +105,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
       .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'packing' }])
       .select().single()
     if (data) { setItems(prev => [...prev, data]); showToast('준비물을 추가했어요'); setNewText('') }
-    else { showToast('추가에 실패했어요', 'error') }
+    else { showToast('준비물 추가에 실패했어요', 'error') }
   }
 
   async function toggleItem(item: CheckItem) {
@@ -162,9 +162,10 @@ export default function ChecklistTab({ tripId, userName }: Props) {
       <button
         type="button"
         onClick={() => setShowPresets(v => !v)}
+        aria-expanded={showPresets}
         className={`w-full ${btn.toggle(showPresets)}`}
       >
-        ✨ 추천 준비물 {showPresets ? '닫기' : '보기'}
+        ✨ 준비물 추천 {showPresets ? '닫기' : '보기'}
       </button>
 
       {showPresets && (
@@ -196,7 +197,7 @@ export default function ChecklistTab({ tripId, userName }: Props) {
         <>
           <div className="flex items-center justify-between px-1">
             <span className="text-sm text-gray-500">{checkedCount}/{items.length} 완료</span>
-            <div className="flex-1 mx-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div role="progressbar" aria-valuenow={checkedCount} aria-valuemin={0} aria-valuemax={items.length} aria-label="준비물 체크 진행률" className="flex-1 mx-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${(checkedCount / items.length) * 100}%` }} />
             </div>
           </div>

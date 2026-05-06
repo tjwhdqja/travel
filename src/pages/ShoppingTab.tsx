@@ -5,8 +5,7 @@ import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
 import { btn, card, input as inputCls } from '../lib/design'
 import Toast, { useToast } from '../components/Toast'
-
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string
+import { GROQ_API_KEY } from '../lib/groq'
 
 
 interface ShopItem {
@@ -297,8 +296,8 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
     const { data } = await supabase.from('checklists')
       .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'shopping' }])
       .select().single()
-    if (data) { setItems(prev => [...prev, data]); showToast('추가했어요'); setNewText('') }
-    else { showToast('추가에 실패했어요', 'error') }
+    if (data) { setItems(prev => [...prev, data]); showToast('쇼핑 아이템을 추가했어요'); setNewText('') }
+    else { showToast('쇼핑 아이템 추가에 실패했어요', 'error') }
   }
 
   async function toggleItem(item: ShopItem) {
@@ -374,7 +373,7 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
       setItems(prev => [...prev, ...data])
       showToast(`${newItems.length}개를 추가했어요`)
     } else {
-      showToast('추가에 실패했어요', 'error')
+      showToast('AI 아이템 추가에 실패했어요', 'error')
     }
     setAiResult(null)
   }
@@ -395,23 +394,49 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
         <button type="submit" className={btn.submit}>추가</button>
       </form>
 
-      {/* 상단 버튼 행 */}
       <div className="flex gap-2">
         <button
           type="button"
           onClick={() => setShowRecommend(v => !v)}
+          aria-expanded={showRecommend}
           className={`flex-1 ${btn.toggle(showRecommend)}`}
         >
-          🛒 쇼핑 추천 {showRecommend ? '닫기' : '보기'}
+          ✨ 쇼핑 추천 {showRecommend ? '닫기' : '보기'}
         </button>
         <button
           type="button"
           onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-          className={btn.toggle(showAI)}
+          aria-expanded={showAI}
+          className={`flex-1 ${btn.toggle(showAI)}`}
         >
-          ✨ AI
+          ✨ AI 추천 {showAI ? '닫기' : '보기'}
         </button>
       </div>
+
+      {showRecommend && (
+        <div className={`${card.section} space-y-3`}>
+          {presetData ? (
+            presetData.map(group => {
+              const available = group.items.filter(p => !addedTexts.has(p))
+              if (available.length === 0) return null
+              return (
+                <div key={group.label}>
+                  <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {available.map(p => (
+                      <button type="button" key={p} onClick={() => addItem(p)} className={btn.chip}>
+                        + {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <p className="text-xs text-gray-400 text-center">"{destination}"의 추천 정보가 없어요</p>
+          )}
+        </div>
+      )}
 
       {showAI && (
         <AIResultPanel
@@ -441,32 +466,6 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
           onAdd={addAllAiItems}
           addLabel="전체 쇼핑 리스트에 추가"
         />
-      )}
-
-      {/* 추천 섹션 */}
-      {showRecommend && (
-        <div className={`${card.section} space-y-3`}>
-          {presetData ? (
-            presetData.map(group => {
-              const available = group.items.filter(p => !addedTexts.has(p))
-              if (available.length === 0) return null
-              return (
-                <div key={group.label}>
-                  <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {available.map(p => (
-                      <button type="button" key={p} onClick={() => addItem(p)} className={btn.chip}>
-                        + {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            })
-          ) : (
-            <p className="text-xs text-gray-400 text-center">"{destination}"의 추천 정보가 없어요</p>
-          )}
-        </div>
       )}
 
       {/* 내 쇼핑 리스트 */}

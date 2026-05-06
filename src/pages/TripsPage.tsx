@@ -177,9 +177,44 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     if (!trimmed || trimmed === nickname) { setEditingNickname(false); return }
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
     const { error } = await supabase.from('profiles').update({ nickname: trimmed }).eq('id', user.id)
     if (error) { showToast('닉네임 변경에 실패했어요', 'error'); return }
-    await supabase.from('trip_members').update({ name: trimmed }).eq('name', nickname)
+
+    // 이 사용자가 속한 여행 ID 목록 수집
+    const { data: memberRows } = await supabase.from('trip_members').select('trip_id').eq('name', nickname)
+    const tripIds = memberRows?.map(m => m.trip_id) ?? []
+
+    const updates = [
+      supabase.from('trip_members').update({ name: trimmed }).eq('name', nickname),
+      ...(tripIds.length > 0 ? [
+        supabase.from('trips').update({ created_by: trimmed }).eq('created_by', nickname).in('id', tripIds),
+        supabase.from('schedules').update({ created_by: trimmed }).eq('created_by', nickname).in('trip_id', tripIds),
+        supabase.from('checklists').update({ created_by: trimmed }).eq('created_by', nickname).in('trip_id', tripIds),
+        supabase.from('expenses').update({ paid_by: trimmed }).eq('paid_by', nickname).in('trip_id', tripIds),
+      ] : []),
+    ]
+
+    await Promise.all(updates)
+
+    // split_with 배열 내부의 닉네임도 교체 (배열 요소는 SDK로 직접 교체 불가라 fetch 후 업데이트)
+    if (tripIds.length > 0) {
+      const { data: splitExpenses } = await supabase
+        .from('expenses')
+        .select('id, split_with')
+        .in('trip_id', tripIds)
+        .contains('split_with', [nickname])
+      if (splitExpenses && splitExpenses.length > 0) {
+        await Promise.all(
+          splitExpenses.map(exp =>
+            supabase.from('expenses').update({
+              split_with: (exp.split_with as string[]).map((n: string) => n === nickname ? trimmed : n),
+            }).eq('id', exp.id)
+          )
+        )
+      }
+    }
+
     onNicknameChange(trimmed)
     setEditingNickname(false)
     showToast('닉네임을 변경했어요')
@@ -252,12 +287,6 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   }
 
   async function commitTripDelete(tripId: string) {
-    await Promise.all([
-      supabase.from('trip_members').delete().eq('trip_id', tripId),
-      supabase.from('schedules').delete().eq('trip_id', tripId),
-      supabase.from('expenses').delete().eq('trip_id', tripId),
-      supabase.from('checklists').delete().eq('trip_id', tripId),
-    ])
     await supabase.from('trips').delete().eq('id', tripId)
   }
 

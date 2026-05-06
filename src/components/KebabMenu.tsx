@@ -27,6 +27,9 @@ export default function KebabMenu({ items }: Props) {
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        aria-label="더보기 메뉴"
+        aria-expanded={open}
+        aria-haspopup="true"
         className="flex flex-col gap-[3px] items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-100 transition"
       >
         <span className="block w-[3px] h-[3px] bg-gray-400 rounded-full" />
