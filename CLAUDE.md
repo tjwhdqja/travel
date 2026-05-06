@@ -70,7 +70,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 - 공용 컴포넌트 위치: `src/components/`
 - 현재 공용 컴포넌트:
-  - `HamburgerMenu` — 햄버거 아이콘 + 수정/삭제 드롭다운
+  - `KebabMenu` — 케밥 아이콘 + 수정/삭제 드롭다운
   - `PillButton` — 둥근 선택 버튼 (카테고리, 멤버, 통화 등)
   - `LocationInput` — Google Places Autocomplete 장소 검색 입력창
 - 새로운 UI를 만들 때 기존 컴포넌트와 동일하면 재사용
