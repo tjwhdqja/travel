@@ -587,14 +587,25 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
   const balances = calcBalances()
   const settlements = calcSettlement()
+  // 정산 기록을 pair 별로 합산
   const settledMap: Record<string, number> = {}
   expenses.filter(e => e.category === '정산').forEach(e => {
     const key = `${e.paid_by}→${e.split_with[0]}`
     settledMap[key] = (settledMap[key] ?? 0) + e.amount
   })
+  // 미완료 이체: 필요금액에서 이미 송금된 금액 차감
   const remainingSettlements = settlements
     .map(s => ({ ...s, remaining: Math.max(0, s.amount - (settledMap[`${s.from}→${s.to}`] ?? 0)) }))
     .filter(s => s.remaining > 0)
+  // 조정된 잔액: 순수 지출 기반 net에서 실제 송금된 금액만큼 차감 (해당 페어에만 적용)
+  const adjustedNetMap: Record<string, number> = {}
+  balances.forEach(b => { adjustedNetMap[b.name] = b.net })
+  settlements.forEach(s => {
+    const settled = Math.min(settledMap[`${s.from}→${s.to}`] ?? 0, s.amount)
+    adjustedNetMap[s.from] = (adjustedNetMap[s.from] ?? 0) + settled
+    adjustedNetMap[s.to] = (adjustedNetMap[s.to] ?? 0) - settled
+  })
+  const adjustedBalances = balances.map(b => ({ ...b, net: Math.round(adjustedNetMap[b.name] ?? 0) }))
   const personalExpenses = expenses.filter(isPersonal)
   const personalTotal = Math.round(personalExpenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0))
   const hasForeignCurrency = expenses.some(e => e.currency !== 'KRW')
@@ -771,7 +782,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                 <div className="px-4 py-3 border-b border-gray-50">
                   <p className="text-sm font-semibold text-gray-700">잔액 요약</p>
                 </div>
-                {balances.map(b => (
+                {adjustedBalances.map(b => (
                   <div key={b.name} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0 gap-2.5">
                     <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold shrink-0">
                       {b.name.slice(0, 1)}
