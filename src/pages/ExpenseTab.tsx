@@ -587,12 +587,18 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
   const balances = calcBalances()
   const settlements = calcSettlement()
-  // 정산 기록을 pair 별로 합산
+  // 현재 지출 중 가장 이른 created_at 이후의 정산 기록만 유효 (삭제된 지출의 orphan 기록 제외)
+  const nonSettleExpenses = expenses.filter(e => e.category !== '정산')
+  const earliestAt = nonSettleExpenses.length > 0
+    ? nonSettleExpenses.reduce((min, e) => e.created_at < min ? e.created_at : min, nonSettleExpenses[0].created_at)
+    : null
   const settledMap: Record<string, number> = {}
-  expenses.filter(e => e.category === '정산').forEach(e => {
-    const key = `${e.paid_by}→${e.split_with[0]}`
-    settledMap[key] = (settledMap[key] ?? 0) + e.amount
-  })
+  expenses
+    .filter(e => e.category === '정산' && earliestAt !== null && e.created_at >= earliestAt)
+    .forEach(e => {
+      const key = `${e.paid_by}→${e.split_with[0]}`
+      settledMap[key] = (settledMap[key] ?? 0) + e.amount
+    })
   // 미완료 이체: 필요금액에서 이미 송금된 금액 차감
   const remainingSettlements = settlements
     .map(s => ({ ...s, remaining: Math.max(0, s.amount - (settledMap[`${s.from}→${s.to}`] ?? 0)) }))
@@ -605,7 +611,11 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
     adjustedNetMap[s.from] = (adjustedNetMap[s.from] ?? 0) + settled
     adjustedNetMap[s.to] = (adjustedNetMap[s.to] ?? 0) - settled
   })
-  const adjustedBalances = balances.map(b => ({ ...b, net: Math.round(adjustedNetMap[b.name] ?? 0) }))
+  // 반올림 오차 보정: 소수 분할 시 발생하는 1~N원 잔여는 0으로 처리
+  const adjustedBalances = balances.map(b => {
+    const net = Math.round(adjustedNetMap[b.name] ?? 0)
+    return { ...b, net: Math.abs(net) <= members.length ? 0 : net }
+  })
   const personalExpenses = expenses.filter(isPersonal)
   const personalTotal = Math.round(personalExpenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0))
   const hasForeignCurrency = expenses.some(e => e.currency !== 'KRW')
