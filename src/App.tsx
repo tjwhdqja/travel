@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import NicknameSetupPage from './pages/NicknameSetupPage'
 import TripsPage from './pages/TripsPage'
 import Spinner from './components/Spinner'
+import OfflineBanner from './components/OfflineBanner'
 
 export default function App() {
   const navigate = useNavigate()
@@ -37,9 +38,9 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <main className="min-h-screen flex items-center justify-center">
         <Spinner />
-      </div>
+      </main>
     )
   }
 
@@ -57,5 +58,10 @@ export default function App() {
       }}
     />
   )
-  return <TripsPage nickname={nickname} onNicknameChange={setNickname} />
+  return (
+    <>
+      <OfflineBanner />
+      <TripsPage nickname={nickname} onNicknameChange={setNickname} />
+    </>
+  )
 }
