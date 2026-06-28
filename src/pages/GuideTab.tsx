@@ -1,9 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
+import { useUndoDelete, sortByCreatedAt } from '../lib/useUndoDelete'
+import { getAllDates } from '../lib/utils'
 import AIResultPanel from '../components/AIResultPanel'
 import EmptyState from '../components/EmptyState'
+import KebabMenu from '../components/KebabMenu'
 import Toast, { useToast } from '../components/Toast'
-import { btn, card } from '../lib/design'
+import { btn, card, select as selectCls, innerTab } from '../lib/design'
 import { GROQ_API_KEY } from '../lib/groq'
+
+interface DbGuideItem {
+  id: string
+  trip_id: string
+  section: string
+  name: string
+  description: string
+  tip: string | null
+  created_by: string
+  created_at: string
+  source: string
+}
 
 interface PlaceItem {
   name: string
@@ -426,14 +442,21 @@ type SectionKey = 'attractions' | 'restaurants' | 'bars' | 'activities'
 const SECTIONS: { key: SectionKey; label: string; emoji: string }[] = [
   { key: 'attractions', label: '관광지', emoji: '🗺️' },
   { key: 'restaurants', label: '맛집', emoji: '🍽️' },
-  { key: 'bars', label: '술집', emoji: '🍺' },
+  { key: 'bars', label: '바·술집', emoji: '🍺' },
   { key: 'activities', label: '액티비티', emoji: '🎯' },
 ]
 
 interface Props {
   destination: string
   isActive?: boolean
+  tripId?: string
+  userName?: string
+  startDate?: string
+  endDate?: string
+  onNavigateToSchedule?: () => void
+  onNavigateToExpense?: (category?: string) => void
 }
+
 
 function findGuideData(destination: string): GuideData {
   const exact = GUIDE[destination]
@@ -442,21 +465,126 @@ function findGuideData(destination: string): GuideData {
   return key ? GUIDE[key] : FALLBACK
 }
 
-export default function GuideTab({ destination, isActive = true }: Props) {
+export default function GuideTab({ destination, isActive = true, tripId, userName, startDate, endDate, onNavigateToSchedule, onNavigateToExpense }: Props) {
   const [activeSection, setActiveSection] = useState<SectionKey>('attractions')
   const [showAI, setShowAI] = useState(false)
   const [aiResult, setAiResult] = useState<PlaceItem[] | null>(null)
-  const [aiAdded, setAiAdded] = useState<Record<SectionKey, PlaceItem[]>>({ attractions: [], restaurants: [], bars: [], activities: [] })
+  const [savedItems, setSavedItems] = useState<DbGuideItem[]>([])
+  const [selectedAiItems, setSelectedAiItems] = useState<Set<string>>(new Set())
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
+  const [addingSchedule, setAddingSchedule] = useState<string | null>(null)
+  const [selectedAddDate, setSelectedAddDate] = useState<string>(() => {
+    const today = new Date().toISOString().split('T')[0]
+    if (startDate && endDate && today >= startDate && today <= endDate) return today
+    return startDate ?? ''
+  })
   const { toast, showToast } = useToast()
+  const deleteSavedItemWithUndo = useUndoDelete('guide_items', setSavedItems, showToast, '장소를 삭제했어요', sortByCreatedAt)
+
+  const allAddDates = startDate && endDate ? getAllDates(startDate, endDate) : []
+
+  const fetchSavedItems = useCallback(async () => {
+    if (!tripId) return
+    const { data } = await supabase.from('guide_items').select('*').eq('trip_id', tripId).order('created_at', { ascending: true })
+    setSavedItems((data ?? []) as DbGuideItem[])
+  }, [tripId])
+
+  useEffect(() => { fetchSavedItems() }, [fetchSavedItems])
+
+  useEffect(() => {
+    if (!tripId) return
+    const channel = supabase
+      .channel(`guide_items:${tripId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guide_items', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        setSavedItems(prev => prev.some(i => i.id === row.id) ? prev : [...prev, row as DbGuideItem])
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'guide_items', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
+        setSavedItems(prev => prev.filter(i => i.id !== (row as DbGuideItem).id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tripId])
+
+  useEffect(() => {
+    setSelectedAiItems(aiResult ? new Set(aiResult.map(i => i.name)) : new Set())
+  }, [aiResult])
+
+  async function addToSchedule(item: PlaceItem) {
+    if (!tripId || !userName || !startDate) return
+    setAddingSchedule(item.name)
+    const targetDate = selectedAddDate || startDate
+    const { data: existing, count } = await supabase
+      .from('schedules')
+      .select('title', { count: 'exact' })
+      .eq('trip_id', tripId)
+      .eq('date', targetDate)
+    if (existing?.some(s => s.title === item.name)) {
+      showToast('이미 같은 날짜에 추가된 일정이에요', 'error')
+      setAddingSchedule(null)
+      return
+    }
+    const { error } = await supabase.from('schedules').insert([{
+      trip_id: tripId,
+      created_by: userName,
+      date: targetDate,
+      time: null,
+      title: item.name,
+      location: item.name,
+      note: item.desc,
+      category: activeSection === 'restaurants' ? '식비' : activeSection === 'activities' ? '관광' : activeSection === 'bars' ? '기타' : '관광',
+      sort_order: count ?? 0,
+    }])
+    setAddingSchedule(null)
+    if (error) showToast('일정 추가에 실패했어요', 'error')
+    else {
+      const dateLabel = new Date(targetDate + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+      const isExpenseSection = activeSection === 'restaurants' || activeSection === 'bars'
+      const expenseCategory = activeSection === 'restaurants' ? '식비' : '기타'
+      const action = isExpenseSection && onNavigateToExpense
+        ? { label: '경비 기록', onClick: () => onNavigateToExpense(expenseCategory) }
+        : onNavigateToSchedule
+        ? { label: '일정 보기', onClick: onNavigateToSchedule }
+        : undefined
+      showToast(`${dateLabel} 일정에 추가했어요`, 'success', action)
+    }
+  }
 
   useEffect(() => {
     if (!isActive) { setShowAI(false); setAiResult(null) }
   }, [isActive])
+
+  async function addSelectedToGuide() {
+    if (!tripId || !userName || !aiResult) return
+    const toAdd = aiResult.filter(i => selectedAiItems.has(i.name))
+    if (toAdd.length === 0) { showToast('추가할 항목을 선택해주세요', 'error'); return }
+    const existingNames = new Set(savedItems.filter(i => i.section === activeSection).map(i => i.name))
+    const unique = toAdd.filter(i => !existingNames.has(i.name))
+    if (unique.length === 0) { showToast('이미 추가된 항목이에요', 'error'); setAiResult(null); setShowAI(false); return }
+    const { data: inserted, error } = await (supabase.from('guide_items') as any).insert(
+      unique.map(i => ({ trip_id: tripId!, section: activeSection, name: i.name, description: i.desc, tip: i.tip ?? undefined, created_by: userName!, source: 'ai' }))
+    ).select()
+    if (error) { showToast('목록 추가에 실패했어요', 'error'); return }
+    if (inserted) setSavedItems(prev => [...prev, ...(inserted as DbGuideItem[])])
+    showToast(`${unique.length}개를 추가했어요`)
+    setAiResult(null)
+    setShowAI(false)
+  }
+
+  async function deleteSavedItem(id: string) {
+    const item = savedItems.find(i => i.id === id)
+    if (item) await deleteSavedItemWithUndo(id, item)
+  }
+
   const data = findGuideData(destination)
   const section = SECTIONS.find(s => s.key === activeSection)!
-  const items = [...data[activeSection], ...(aiAdded[activeSection] ?? [])]
+  const staticItems = data[activeSection]
+  const staticNames = new Set(staticItems.map(i => i.name))
+  const savedForSection = savedItems.filter(i => i.section === activeSection && !staticNames.has(i.name))
+  const allItems: (PlaceItem & { savedId?: string; isAi?: boolean })[] = [
+    ...staticItems,
+    ...savedForSection.map(i => ({ name: i.name, desc: i.description, tip: i.tip || undefined, savedId: i.id, isAi: i.source === 'ai' })),
+  ]
 
   async function generateAI() {
     setAiLoading(true); setAiError(''); setAiResult(null)
@@ -480,38 +608,40 @@ export default function GuideTab({ destination, isActive = true }: Props) {
       const text: string = json.choices?.[0]?.message?.content ?? ''
       const match = text.match(/\[[\s\S]*\]/)
       if (match) setAiResult(JSON.parse(match[0]) as PlaceItem[])
-    } catch { setAiError('추천 생성에 실패했습니다. 다시 시도해주세요.') }
+      else setAiError('추천 생성에 실패했어요. 다시 시도해주세요.')
+    } catch { setAiError('추천 생성에 실패했어요. 다시 시도해주세요.') }
     setAiLoading(false)
   }
 
   return (
     <div className="space-y-4">
-      <div className="border-b border-gray-100 overflow-x-auto scrollbar-hide">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
+          aria-expanded={showAI}
+          className={`flex-1 ${btn.toggle(showAI)}`}
+        >
+          ✨ AI 추천 {showAI ? '닫기' : '보기'}
+        </button>
+      </div>
+
+      <div role="tablist" className="border-b border-gray-100 overflow-x-auto scrollbar-hide">
         <div className="flex">
           {SECTIONS.map(s => (
             <button
               type="button"
               key={s.key}
+              role="tab"
+              aria-selected={activeSection === s.key}
               onClick={() => { setActiveSection(s.key); setAiResult(null); setShowAI(false) }}
-              className={`flex-shrink-0 flex items-center gap-1 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
-                activeSection === s.key
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-400 hover:text-gray-600'
-              }`}
+              className={innerTab(activeSection === s.key)}
             >
               {s.emoji} {s.label}
             </button>
           ))}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-        aria-expanded={showAI}
-        className={`w-full ${btn.toggle(showAI)}`}
-      >
-        ✨ AI 추천 {showAI ? '닫기' : '보기'}
-      </button>
 
       {showAI && (
         <AIResultPanel
@@ -521,43 +651,87 @@ export default function GuideTab({ destination, isActive = true }: Props) {
           onGenerate={generateAI}
           loading={aiLoading}
           result={aiResult && (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {aiResult.map(item => (
-                <div key={item.name} className="py-2 border-b border-gray-50 last:border-0">
-                  <p className="text-sm font-semibold text-gray-800">{item.name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-                  {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
-                </div>
+                <label key={item.name} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedAiItems.has(item.name)}
+                    onChange={e => setSelectedAiItems(prev => {
+                      const next = new Set(prev)
+                      e.target.checked ? next.add(item.name) : next.delete(item.name)
+                      return next
+                    })}
+                    className="mt-0.5 flex-shrink-0 accent-indigo-500"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                    {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
+                  </div>
+                </label>
               ))}
             </div>
           )}
           error={aiError}
           onRetry={() => { setAiResult(null) }}
-          onAdd={() => { setAiAdded(prev => ({ ...prev, [activeSection]: [...(prev[activeSection] ?? []), ...(aiResult ?? [])] })); showToast(`${aiResult?.length ?? 0}개를 목록에 추가했어요`); setAiResult(null); setShowAI(false) }}
-          addLabel="목록에 추가"
+          onAdd={addSelectedToGuide}
+          addLabel={`목록에 추가${selectedAiItems.size > 0 ? ` (${selectedAiItems.size}개)` : ''}`}
         />
       )}
 
-      {/* 장소 목록 */}
       <div className="space-y-2">
-        <p className="text-xs text-gray-400 px-1">📍 {destination} · {section.emoji} {section.label}</p>
-        {items.length === 0 ? (
-          <EmptyState icon={section.emoji} title="추천 장소가 없어요" subtitle="AI 추천을 눌러 숨은 명소를 찾아보세요" />
-        ) : items.map((item) => (
-          <div key={item.name} className={`${card.item} px-4 py-3`}>
-            <p className="text-sm font-semibold text-gray-800">{item.name}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-            {item.tip && (
-              <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>
-            )}
-            <a
-              href={`https://maps.google.com/?q=${encodeURIComponent(item.name + ' ' + destination)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-gray-400 mt-1 flex items-center gap-1 hover:text-indigo-400 transition-colors"
+        <div className="flex items-center gap-2 px-1">
+          <p className="text-xs text-gray-400 flex-1">📍 {destination} · {section.emoji} {section.label}</p>
+          {tripId && allAddDates.length > 1 && (
+            <select
+              value={selectedAddDate}
+              onChange={e => setSelectedAddDate(e.target.value)}
+              className={`${selectCls} text-xs py-1`}
             >
-              📍 지도 보기
-            </a>
+              {allAddDates.map((d, i) => (
+                <option key={d} value={d}>{i + 1}일차 · {new Date(d + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        {allItems.length === 0 ? (
+          <EmptyState icon={section.emoji} title="추천 장소가 없어요" subtitle="AI 추천을 눌러 숨은 명소를 찾아보세요" />
+        ) : allItems.map((item) => (
+          <div key={item.name} className={`${card.item} px-4 py-3`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+                  {item.isAi && <span className="text-xs font-medium text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full shrink-0">AI</span>}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                {item.tip && <p className="text-xs text-indigo-500 mt-1">💡 {item.tip}</p>}
+              </div>
+              {item.savedId && (
+                <KebabMenu items={[{ label: '삭제', onClick: () => deleteSavedItem(item.savedId!), danger: true }]} />
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent(item.name + ' ' + destination)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-400 flex items-center gap-1 hover:text-indigo-400 transition-colors"
+              >
+                📍 지도 보기
+              </a>
+              {tripId && (
+                <button
+                  type="button"
+                  onClick={() => addToSchedule(item)}
+                  disabled={addingSchedule === item.name}
+                  className={`ml-auto ${btn.chip} disabled:opacity-50`}
+                >
+                  {addingSchedule === item.name ? '추가 중...' : '📅 일정 추가'}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

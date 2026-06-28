@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { getAvatarColor, getInitial } from '../lib/utils'
 import PillButton from '../components/PillButton'
 import KebabMenu from '../components/KebabMenu'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
-import { btn, card, input as inputCls, select as selectCls } from '../lib/design'
+import { btn, card, badge, input as inputCls, select as selectCls, warning, settleDot } from '../lib/design'
 import Toast, { useToast } from '../components/Toast'
 
 interface Expense {
@@ -17,9 +18,10 @@ interface Expense {
   category: string
   currency: string
   payment_method: string
-  date: string | null
-  created_at: string
+  date: string
+  created_at: string | null
   expense_refs?: string[] | null
+  remainder_to?: string[] | null
 }
 
 interface Props {
@@ -29,6 +31,8 @@ interface Props {
   members: string[]
   isActive?: boolean
   destination?: string
+  navState?: { category?: string; title?: string }
+  onNavStateConsumed?: () => void
 }
 
 type FormState = {
@@ -40,6 +44,7 @@ type FormState = {
   currency: string
   payment_method: string
   date: string
+  remainder_to: string[]
 }
 
 const CATEGORIES = [
@@ -48,7 +53,7 @@ const CATEGORIES = [
   { id: '숙박', emoji: '🏨' },
   { id: '관광', emoji: '🎡' },
   { id: '쇼핑', emoji: '🛍' },
-  { id: '기타', emoji: '💳' },
+  { id: '기타', emoji: '📌' },
   { id: '정산', emoji: '💸' },
 ]
 
@@ -71,10 +76,92 @@ function isPersonal(exp: Expense) {
   return exp.split_with.length === 1 && exp.split_with[0] === exp.paid_by && exp.category !== '정산'
 }
 
+// expense_refs 기반 유효 정산 판별
+// null/undefined → 구버전/orphaned 기록 → 무효
+// [] → 수동 추가 → 항상 유효
+// [...ids] → 모든 참조 지출이 현재 존재할 때만 유효
+function isValidSettlement(exp: Expense, nonSettleIds: Set<string>) {
+  if (exp.category !== '정산') return false
+  if (exp.expense_refs == null) return false
+  if (exp.expense_refs.length === 0) return true
+  return exp.expense_refs.every(ref => nonSettleIds.has(ref))
+}
+
 function calcKRW(amount: number, currency: string, rates: Record<string, number>): number {
   if (currency === 'KRW') return amount
   if (!rates['KRW'] || !rates[currency]) return amount
   return Math.round(amount * rates['KRW'] / rates[currency])
+}
+
+interface Balance { name: string; paid: number; owed: number; net: number }
+
+function computeBalances(members: string[], expenses: Expense[], rates: Record<string, number>): Balance[] {
+  const memberSet = new Set(members)
+  const paid: Record<string, number> = {}
+  const owed: Record<string, number> = {}
+  const remainderCount: Record<string, number> = {}
+  members.forEach(m => { paid[m] = 0; owed[m] = 0; remainderCount[m] = 0 })
+
+  expenses.forEach(exp => {
+    if (exp.split_with.length === 1 && exp.split_with[0] === exp.paid_by && exp.category !== '정산') return
+    if (exp.category === '정산') return
+    const activeSplit = exp.split_with.filter(n => memberSet.has(n))
+    if (activeSplit.length === 0) return
+    const krw = calcKRW(exp.amount, exp.currency, rates)
+    if (paid[exp.paid_by] !== undefined) paid[exp.paid_by] += krw
+
+    const base = Math.floor(krw / activeSplit.length)
+    const extra = krw - base * activeSplit.length
+
+    if (exp.remainder_to != null) {
+      // stored recipients capped to extra; fill deficit with auto-assign by frequency
+      const storedSet = new Set(exp.remainder_to.filter(n => activeSplit.includes(n)).slice(0, extra))
+      if (storedSet.size < extra) {
+        const deficit = extra - storedSet.size
+        const candidates = [...activeSplit]
+          .filter(n => !storedSet.has(n))
+          .sort((a, b) => (remainderCount[a] ?? 0) - (remainderCount[b] ?? 0))
+        candidates.slice(0, deficit).forEach(n => storedSet.add(n))
+      }
+      activeSplit.forEach(person => {
+        const gets = storedSet.has(person)
+        if (owed[person] !== undefined) owed[person] += base + (gets ? 1 : 0)
+        if (gets) remainderCount[person] = (remainderCount[person] ?? 0) + 1
+      })
+    } else {
+      // auto-assign: give extra 1원 to those with fewest so far
+      if (extra > 0) {
+        const sorted = [...activeSplit].sort((a, b) => (remainderCount[a] ?? 0) - (remainderCount[b] ?? 0))
+        const recipients = new Set(sorted.slice(0, extra))
+        activeSplit.forEach(person => {
+          const gets = recipients.has(person)
+          if (owed[person] !== undefined) owed[person] += base + (gets ? 1 : 0)
+          if (gets) remainderCount[person] = (remainderCount[person] ?? 0) + 1
+        })
+      } else {
+        activeSplit.forEach(person => {
+          if (owed[person] !== undefined) owed[person] += base
+        })
+      }
+    }
+  })
+  return members.map(m => ({ name: m, paid: paid[m] ?? 0, owed: owed[m] ?? 0, net: (paid[m] ?? 0) - (owed[m] ?? 0) }))
+}
+
+function computeSettlement(balances: Balance[]): { from: string; to: string; amount: number }[] {
+  const creditors = balances.filter(b => b.net > 0).map(b => ({ name: b.name, amt: b.net })).sort((a, b) => b.amt - a.amt)
+  const debtors = balances.filter(b => b.net < 0).map(b => ({ name: b.name, amt: -b.net })).sort((a, b) => b.amt - a.amt)
+  const result: { from: string; to: string; amount: number }[] = []
+  let i = 0, j = 0
+  while (i < creditors.length && j < debtors.length) {
+    const transfer = Math.min(creditors[i].amt, debtors[j].amt)
+    if (transfer > 0) result.push({ from: debtors[j].name, to: creditors[i].name, amount: Math.round(transfer) })
+    creditors[i].amt -= transfer
+    debtors[j].amt -= transfer
+    if (creditors[i].amt < 1) i++
+    if (debtors[j].amt < 1) j++
+  }
+  return result
 }
 
 interface FormProps {
@@ -82,6 +169,7 @@ interface FormProps {
   setForm: (f: FormState) => void
   members: string[]
   rates: Record<string, number>
+  remainderCounts?: Record<string, number>
   onSubmit: (e: React.FormEvent) => void
   submitLabel: string
   onCancel: () => void
@@ -235,6 +323,7 @@ interface ItemProps {
   setForm: (f: FormState) => void
   members: string[]
   rates: Record<string, number>
+  remainderCounts: Record<string, number>
   onStartEdit: (exp: Expense) => void
   onDelete: (id: string) => void
   onUpdate: (e: React.FormEvent) => void
@@ -242,12 +331,12 @@ interface ItemProps {
   submitting?: boolean
 }
 
-function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdit, onDelete, onUpdate, onCancelEdit, submitting = false }: ItemProps) {
+function ExpenseItem({ exp, editingId, form, setForm, members, rates, remainderCounts, onStartEdit, onDelete, onUpdate, onCancelEdit, submitting = false }: ItemProps) {
   if (editingId === exp.id) {
     return (
       <div className={`${card.base} p-5`}>
         <h3 className="font-bold text-gray-800 mb-4">지출 수정</h3>
-        <ExpenseForm form={form} setForm={setForm} members={members} rates={rates}
+        <ExpenseForm form={form} setForm={setForm} members={members} rates={rates} remainderCounts={remainderCounts}
           onSubmit={onUpdate} submitLabel="저장" onCancel={onCancelEdit} submitting={submitting}
         />
       </div>
@@ -267,7 +356,7 @@ function ExpenseItem({ exp, editingId, form, setForm, members, rates, onStartEdi
         <div className="flex-1 min-w-0">
           <p className="font-medium text-gray-800 text-sm flex items-center gap-1.5">
             {exp.title}
-            {personal && <span className="text-xs font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">개인</span>}
+            {personal && <span className={badge.gray}>개인</span>}
           </p>
           <p className="text-xs text-gray-400 mt-0.5">
             {personal ? (
@@ -319,9 +408,10 @@ const emptyForm = (userName: string, members: string[], currency = 'KRW'): FormS
   title: '', amount: '', paid_by: userName,
   split_with: [...members], category: '식비', currency, payment_method: '카드',
   date: new Date().toISOString().split('T')[0],
+  remainder_to: [],
 })
 
-export default function ExpenseTab({ tripId, userName, budget = 0, members, isActive = true, destination }: Props) {
+export default function ExpenseTab({ tripId, userName, budget = 0, members, isActive = true, destination, navState, onNavStateConsumed }: Props) {
   const defaultCurrency = DESTINATION_CURRENCY[destination ?? ''] ?? 'KRW'
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [rates, setRates] = useState<Record<string, number>>({})
@@ -331,6 +421,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   const [activeView, setActiveView] = useState<'list' | 'settlement'>('list')
   const [showMemberStats, setShowMemberStats] = useState(false)
   const [showPreSettle, setShowPreSettle] = useState(false)
+  const [showRemainderEdit, setShowRemainderEdit] = useState(false)
   const [preFrom, setPreFrom] = useState(userName)
   const [preTo, setPreTo] = useState('')
   const [preAmount, setPreAmount] = useState('')
@@ -340,15 +431,41 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
   const [submitting, setSubmitting] = useState(false)
   const { toast, showToast } = useToast()
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingDeleteRef = useRef<{ id: string; item: Expense } | null>(null)
+  const pendingDeleteRef = useRef<{ id: string; item: Expense; idx: number } | null>(null)
 
   useEffect(() => {
     if (!isActive) { setShowForm(false); setEditingId(null); setShowMemberStats(false); setShowPreSettle(false) }
   }, [isActive])
 
   useEffect(() => {
+    if (!navState) return
+    setShowForm(true)
+    setEditingId(null)
+    setForm({ ...emptyForm(userName, members, defaultCurrency), category: navState.category ?? '식비', title: navState.title ?? '' })
+    onNavStateConsumed?.()
+  }, [navState])
+
+  const fetchAll = useCallback(async () => {
+    const { data: exp, error } = await supabase.from('expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false })
+    if (error) showToast('지출 내역을 불러오지 못했어요', 'error')
+    setExpenses((exp ?? []) as Expense[])
+    setLoading(false)
+  }, [tripId, showToast])
+
+  useEffect(() => {
     if (userName) fetchAll()
-  }, [tripId, userName])
+  }, [tripId, userName, fetchAll])
+
+  useEffect(() => {
+    setForm(prev => {
+      if (showForm || editingId) return prev
+      return {
+        ...prev,
+        split_with: [...members],
+        paid_by: members.includes(prev.paid_by) ? prev.paid_by : userName,
+      }
+    })
+  }, [members, showForm, editingId, userName])
 
   useEffect(() => {
     const channel = supabase
@@ -392,18 +509,19 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
     return calcKRW(amount, currency, rates)
   }
 
-  async function fetchAll() {
-    const { data: exp, error } = await supabase.from('expenses').select('*').eq('trip_id', tripId).order('created_at', { ascending: false })
-    if (error) showToast('지출 내역을 불러오지 못했어요', 'error')
-    setExpenses(exp ?? [])
-    setLoading(false)
-  }
-
   async function addExpense(e: React.FormEvent) {
     e.preventDefault()
     if (form.split_with.length === 0) { showToast('정산할 사람을 선택해주세요', 'error'); return }
     if (!form.amount || Number(form.amount) <= 0) { showToast('금액은 1 이상이어야 해요', 'error'); return }
     setSubmitting(true)
+    const krwAmt = calcKRW(Number(form.amount), form.currency, rates)
+    const splitN = form.split_with.length
+    const autoExtra = splitN > 0 ? krwAmt - Math.floor(krwAmt / splitN) * splitN : 0
+    const autoRemainderTo = autoExtra > 0
+      ? [...form.split_with]
+          .sort((a, b) => (remainderCounts[a] ?? 0) - (remainderCounts[b] ?? 0))
+          .slice(0, autoExtra)
+      : []
     const { data } = await supabase
       .from('expenses')
       .insert([{
@@ -411,13 +529,20 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         paid_by: form.paid_by, split_with: form.split_with,
         category: form.category, currency: form.currency,
         payment_method: form.payment_method, date: form.date,
+        remainder_to: autoRemainderTo,
       }])
       .select().single()
     if (data) {
-      setExpenses(prev => [data, ...prev])
+      const newExpenses = [data as Expense, ...expenses]
+      setExpenses(newExpenses)
       setShowForm(false)
       setForm(emptyForm(userName, members, defaultCurrency))
-      showToast('지출을 추가했어요')
+      const newTotal = newExpenses.filter(e => e.category !== '정산').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+      if (budget > 0 && newTotal > budget) {
+        showToast(`지출을 추가했어요 (예산 ${(newTotal - budget).toLocaleString()}원 초과)`, 'error')
+      } else {
+        showToast('지출을 추가했어요')
+      }
     } else {
       showToast('지출 추가에 실패했어요', 'error')
     }
@@ -430,6 +555,14 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
     if (form.split_with.length === 0) { showToast('정산할 사람을 선택해주세요', 'error'); return }
     if (!form.amount || Number(form.amount) <= 0) { showToast('금액은 1 이상이어야 해요', 'error'); return }
     setSubmitting(true)
+    const krwAmt = calcKRW(Number(form.amount), form.currency, rates)
+    const splitN = form.split_with.length
+    const autoExtra = splitN > 0 ? krwAmt - Math.floor(krwAmt / splitN) * splitN : 0
+    const autoRemainderTo = autoExtra > 0
+      ? [...form.split_with]
+          .sort((a, b) => (remainderCounts[a] ?? 0) - (remainderCounts[b] ?? 0))
+          .slice(0, autoExtra)
+      : []
     const { data } = await supabase
       .from('expenses')
       .update({
@@ -437,13 +570,20 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         paid_by: form.paid_by, split_with: form.split_with,
         category: form.category, currency: form.currency,
         payment_method: form.payment_method, date: form.date,
+        remainder_to: autoRemainderTo,
       })
       .eq('id', editingId)
       .select().single()
     if (data) {
-      setExpenses(prev => prev.map(ex => ex.id === data.id ? data : ex))
+      const newExpenses = expenses.map(ex => ex.id === data.id ? data as Expense : ex)
+      setExpenses(newExpenses)
       setEditingId(null)
-      showToast('지출을 수정했어요')
+      const newTotal = newExpenses.filter(e => e.category !== '정산').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+      if (budget > 0 && newTotal > budget) {
+        showToast(`지출을 수정했어요 (예산 ${(newTotal - budget).toLocaleString()}원 초과)`, 'error')
+      } else {
+        showToast('지출을 수정했어요')
+      }
     } else {
       showToast('지출 수정에 실패했어요', 'error')
     }
@@ -458,13 +598,15 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
       paid_by: exp.paid_by, split_with: exp.split_with,
       category: exp.category, currency: exp.currency,
       payment_method: exp.payment_method,
-      date: exp.date ?? new Date().toISOString().split('T')[0],
+      date: exp.date,
+      remainder_to: exp.remainder_to ?? [],
     })
   }
 
   async function deleteExpense(id: string) {
     const item = expenses.find(e => e.id === id)
     if (!item) return
+    const idx = expenses.findIndex(e => e.id === id)
     const relatedSettlementIds = expenses
       .filter(e => e.category === '정산' && e.expense_refs?.includes(id))
       .map(e => e.id)
@@ -485,12 +627,17 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         pendingDeleteRef.current = null
       }, 3000)
       undoTimerRef.current = timer
-      pendingDeleteRef.current = { id, item }
+      pendingDeleteRef.current = { id, item, idx }
       showToast('지출을 삭제했어요', 'success', {
         label: '실행 취소',
         onClick: () => {
           clearTimeout(timer)
-          setExpenses(prev => [item, ...prev])
+          setExpenses(prev => {
+            if (prev.some(e => e.id === item.id)) return prev
+            const arr = [...prev]
+            arr.splice(Math.min(idx, arr.length), 0, item)
+            return arr
+          })
           pendingDeleteRef.current = null
         },
       })
@@ -499,7 +646,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
 
   async function addPreSettlement(e: React.FormEvent) {
     e.preventDefault()
-    if (!preTo || preFrom === preTo) { showToast('보낸 사람과 받은 사람이 달라야 합니다', 'error'); return }
+    if (!preTo || preFrom === preTo) { showToast('보낸 사람과 받은 사람이 달라야 해요', 'error'); return }
     if (!preAmount || Number(preAmount) <= 0) { showToast('금액은 1 이상이어야 해요', 'error'); return }
     setSubmitting(true)
     const { data } = await supabase
@@ -513,11 +660,12 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         category: '정산',
         currency: 'KRW',
         payment_method: '송금',
+        date: new Date().toISOString().split('T')[0],
         expense_refs: [],
       }])
       .select().single()
     if (data) {
-      setExpenses(prev => [data, ...prev])
+      setExpenses(prev => [data as Expense, ...prev])
       setShowPreSettle(false)
       setPreAmount('')
       setPreTo('')
@@ -526,6 +674,11 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
       showToast('송금 기록에 실패했어요', 'error')
     }
     setSubmitting(false)
+  }
+
+  async function updateRemainderTo(expId: string, newRemainderTo: string[]) {
+    const { data } = await supabase.from('expenses').update({ remainder_to: newRemainderTo }).eq('id', expId).select().single()
+    if (data) setExpenses(prev => prev.map(e => e.id === expId ? { ...e, remainder_to: newRemainderTo } : e))
   }
 
   async function completeSettlement(from: string, to: string, amount: number) {
@@ -543,112 +696,105 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         category: '정산',
         currency: 'KRW',
         payment_method: '송금',
+        date: new Date().toISOString().split('T')[0],
         expense_refs: expenseRefs,
       }])
       .select().single()
-    if (data) { setExpenses(prev => [data, ...prev]); showToast('송금을 기록했어요') }
+    if (data) { setExpenses(prev => [data as Expense, ...prev]); showToast('송금을 기록했어요') }
     else { showToast('송금 기록에 실패했어요', 'error') }
     setSubmitting(false)
-  }
-
-  function calcBalances() {
-    const paid: Record<string, number> = {}
-    const owed: Record<string, number> = {}
-    members.forEach(m => { paid[m] = 0; owed[m] = 0 })
-    expenses.forEach(exp => {
-      if (isPersonal(exp)) return
-      if (exp.category === '정산') return
-      const krw = toKRW(exp.amount, exp.currency)
-      const share = krw / exp.split_with.length
-      if (paid[exp.paid_by] !== undefined) paid[exp.paid_by] += krw
-      exp.split_with.forEach(person => {
-        if (owed[person] !== undefined) owed[person] += share
-      })
-    })
-    return members.map(m => ({
-      name: m,
-      paid: paid[m] ?? 0,
-      owed: owed[m] ?? 0,
-      net: (paid[m] ?? 0) - (owed[m] ?? 0),
-    }))
-  }
-
-  function calcSettlement() {
-    const balances = calcBalances()
-    const creditors = balances.filter(b => b.net > 0).map(b => ({ name: b.name, amt: b.net })).sort((a, b) => b.amt - a.amt)
-    const debtors = balances.filter(b => b.net < 0).map(b => ({ name: b.name, amt: -b.net })).sort((a, b) => b.amt - a.amt)
-    const result: { from: string; to: string; amount: number }[] = []
-    let i = 0, j = 0
-    while (i < creditors.length && j < debtors.length) {
-      const transfer = Math.min(creditors[i].amt, debtors[j].amt)
-      if (transfer > 0) result.push({ from: debtors[j].name, to: creditors[i].name, amount: Math.round(transfer) })
-      creditors[i].amt -= transfer
-      debtors[j].amt -= transfer
-      if (creditors[i].amt < 1) i++
-      if (debtors[j].amt < 1) j++
-    }
-    return result
-  }
-
-  function getExpenseDate(exp: Expense) {
-    return exp.date ?? exp.created_at.split('T')[0]
   }
 
   function formatDateHeader(dateStr: string) {
     return new Date(dateStr + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
   }
 
-  const groupedExpenses = (() => {
-    const sorted = [...expenses].filter(e => e.category !== '정산').sort((a, b) => getExpenseDate(b).localeCompare(getExpenseDate(a)))
+  const remainderCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    members.forEach(m => { counts[m] = 0 })
+    expenses.forEach(exp => {
+      exp.remainder_to?.forEach(m => { counts[m] = (counts[m] ?? 0) + 1 })
+    })
+    return counts
+  }, [expenses, members])
+
+  const remainderInfo = useMemo(() => {
+    const holders: Record<string, number> = {}
+    const activeSet = new Set<string>()
+    const memberSet = new Set(members)
+    expenses.forEach(exp => {
+      if (!exp.remainder_to || exp.remainder_to.length === 0) return
+      if (exp.category === '정산') return
+      exp.remainder_to.forEach(m => { holders[m] = (holders[m] ?? 0) + 1 })
+      exp.split_with.filter(m => memberSet.has(m)).forEach(m => activeSet.add(m))
+    })
+    const total = Object.values(holders).reduce((s, v) => s + v, 0)
+    if (total === 0) return null
+    const activeList = [...activeSet]
+    const counts = activeList.map(m => holders[m] ?? 0)
+    const balanced = counts.length > 0 && counts.every(c => c === counts[0])
+    return { holders, total, balanced }
+  }, [expenses, members])
+
+  const expensesWithRemainder = useMemo(
+    () => expenses.filter(e => e.remainder_to != null && e.remainder_to.length > 0 && e.category !== '정산'),
+    [expenses]
+  )
+
+  const groupedExpenses = useMemo(() => {
+    const sorted = [...expenses].filter(e => e.category !== '정산').sort((a, b) => b.date.localeCompare(a.date))
     const groups: { date: string; items: Expense[] }[] = []
     sorted.forEach(exp => {
-      const date = getExpenseDate(exp)
+      const date = exp.date
       const last = groups[groups.length - 1]
       if (last?.date === date) last.items.push(exp)
       else groups.push({ date, items: [exp] })
     })
     return groups
-  })()
+  }, [expenses])
 
-  const totalKRW = expenses.filter(e => e.category !== '정산').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0)
+  const totalKRW = useMemo(() => expenses.filter(e => e.category !== '정산').reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0), [expenses, rates])
   const remaining = budget > 0 ? budget - totalKRW : null
   const budgetPct = budget > 0 ? Math.min((totalKRW / budget) * 100, 100) : 0
-  const balances = calcBalances()
-  const settlements = calcSettlement()
-  // expense_refs 기반 유효 정산만 포함
-  // - null: 구버전/orphaned 기록 → 무효
-  // - []: 수동 추가(+ 기록 추가) → 항상 유효
-  // - [...ids]: 송금함으로 생성 → expense_refs의 모든 지출이 현재 존재할 때만 유효
-  const nonSettleIds = new Set(expenses.filter(e => e.category !== '정산').map(e => e.id))
-  const settledMap: Record<string, number> = {}
-  expenses
-    .filter(e => {
-      if (e.category !== '정산') return false
-      if (e.expense_refs === null || e.expense_refs === undefined) return false
-      if (e.expense_refs.length === 0) return true
-      return e.expense_refs.every(ref => nonSettleIds.has(ref))
+  const balances = useMemo(() => computeBalances(members, expenses, rates), [members, expenses, rates])
+  const settlements = useMemo(() => computeSettlement(balances), [balances])
+
+  const nonSettleIds = useMemo(
+    () => new Set(expenses.filter(e => e.category !== '정산').map(e => e.id)),
+    [expenses]
+  )
+
+  const settledMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    expenses
+      .filter(e => isValidSettlement(e, nonSettleIds))
+      .forEach(e => {
+        const key = `${e.paid_by}→${e.split_with[0]}`
+        map[key] = (map[key] ?? 0) + e.amount
+      })
+    return map
+  }, [expenses, nonSettleIds])
+
+  const remainingSettlements = useMemo(
+    () => settlements
+      .map(s => ({ ...s, remaining: Math.max(0, s.amount - (settledMap[`${s.from}→${s.to}`] ?? 0)) }))
+      .filter(s => s.remaining > 0),
+    [settlements, settledMap]
+  )
+
+  const adjustedBalances = useMemo(() => {
+    const netMap: Record<string, number> = {}
+    balances.forEach(b => { netMap[b.name] = b.net })
+    settlements.forEach(s => {
+      const settled = Math.min(settledMap[`${s.from}→${s.to}`] ?? 0, s.amount)
+      netMap[s.from] = (netMap[s.from] ?? 0) + settled
+      netMap[s.to] = (netMap[s.to] ?? 0) - settled
     })
-    .forEach(e => {
-      const key = `${e.paid_by}→${e.split_with[0]}`
-      settledMap[key] = (settledMap[key] ?? 0) + e.amount
+    return balances.map(b => {
+      const net = Math.round(netMap[b.name] ?? 0)
+      return { ...b, net: Math.abs(net) <= members.length ? 0 : net }
     })
-  // 미완료 이체: 필요금액에서 이미 송금된 금액 차감
-  const remainingSettlements = settlements
-    .map(s => ({ ...s, remaining: Math.max(0, s.amount - (settledMap[`${s.from}→${s.to}`] ?? 0)) }))
-    .filter(s => s.remaining > 0)
-  // 조정된 잔액: 순수 지출 기반 net에서 실제 송금된 금액만큼 차감 (해당 페어에만 적용)
-  const adjustedNetMap: Record<string, number> = {}
-  balances.forEach(b => { adjustedNetMap[b.name] = b.net })
-  settlements.forEach(s => {
-    const settled = Math.min(settledMap[`${s.from}→${s.to}`] ?? 0, s.amount)
-    adjustedNetMap[s.from] = (adjustedNetMap[s.from] ?? 0) + settled
-    adjustedNetMap[s.to] = (adjustedNetMap[s.to] ?? 0) - settled
-  })
-  // 반올림 오차 보정: 소수 분할 시 발생하는 1~N원 잔여는 0으로 처리
-  const adjustedBalances = balances.map(b => {
-    const net = Math.round(adjustedNetMap[b.name] ?? 0)
-    return { ...b, net: Math.abs(net) <= members.length ? 0 : net }
-  })
+  }, [balances, settlements, settledMap, members.length])
   const personalExpenses = expenses.filter(isPersonal)
   const personalTotal = Math.round(personalExpenses.reduce((sum, e) => sum + toKRW(e.amount, e.currency), 0))
   const hasForeignCurrency = expenses.some(e => e.currency !== 'KRW')
@@ -669,7 +815,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         <div className={`${card.base} p-5`}>
           <h3 className="font-bold text-gray-800 mb-4">지출 추가</h3>
           <ExpenseForm
-            form={form} setForm={setForm} members={members} rates={rates}
+            form={form} setForm={setForm} members={members} rates={rates} remainderCounts={remainderCounts}
             onSubmit={addExpense} submitLabel="추가" submitting={submitting}
             onCancel={() => { setShowForm(false); setForm(emptyForm(userName, members, defaultCurrency)) }}
           />
@@ -688,7 +834,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
           {budget > 0 && (
             <div className={`${card.section} space-y-2`}>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">예산 사용</span>
+                <span className="text-gray-500">예산 현황</span>
                 <span className={remaining! < 0 ? 'text-red-500 font-bold' : 'text-gray-700 font-medium'}>
                   {totalKRW.toLocaleString()}원 / {budget.toLocaleString()}원
                 </span>
@@ -696,18 +842,18 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div className={`h-full rounded-full transition-all ${budgetPct >= 100 ? 'bg-red-400' : budgetPct >= 80 ? 'bg-yellow-400' : 'bg-indigo-400'}`} style={{ width: `${budgetPct}%` }} />
               </div>
-              <p className={`text-xs ${remaining! < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                {remaining! < 0 ? `${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
+              <p className={`text-xs ${remaining! < 0 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+                {remaining! < 0 ? `⚠️ ${Math.abs(remaining!).toLocaleString()}원 초과` : `${remaining!.toLocaleString()}원 남음`}
               </p>
             </div>
           )}
 
           {hasForeignCurrency && (
-            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-              <span className="text-xs text-amber-800">
+            <div className={`${warning.banner} justify-between`}>
+              <span className={warning.text}>
                 💱 환율 마지막 갱신: {ratesUpdatedAt ? `${Math.round((Date.now() - ratesUpdatedAt.getTime()) / 60000)}분 전` : '미갱신'}
               </span>
-              <button type="button" onClick={fetchRates} disabled={ratesLoading} className="text-xs font-bold text-amber-700 bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-200 shrink-0 ml-2 hover:bg-amber-200 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <button type="button" onClick={fetchRates} disabled={ratesLoading} className={warning.btn}>
                 {ratesLoading ? '갱신 중...' : '🔄 갱신'}
               </button>
             </div>
@@ -725,7 +871,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                     aria-expanded={showMemberStats}
                     className={`w-full flex items-center justify-between ${btn.toggle(showMemberStats)}`}
                   >
-                    <span>사용자별 현황</span>
+                    <span>멤버별 지출</span>
                     <ChevronDown size={16} className={`transition-transform ${showMemberStats ? 'rotate-180' : ''}`} />
                   </button>
                   {showMemberStats && (
@@ -742,8 +888,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                     return (
                       <div key={m} className="px-4 py-3 border-b border-gray-50 last:border-0">
                         <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold shrink-0">
-                            {m.slice(0, 1)}
+                          <div className={`w-7 h-7 rounded-full ${getAvatarColor(m)} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                            {getInitial(m)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between mb-1.5">
@@ -797,6 +943,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                           setForm={setForm}
                           members={members}
                           rates={rates}
+                          remainderCounts={remainderCounts}
                           onStartEdit={startEdit}
                           onDelete={deleteExpense}
                           onUpdate={updateExpense}
@@ -815,11 +962,13 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
         <div className="space-y-3">
           {members.length === 0 ? (
             <EmptyState icon="👥" title="멤버가 없어요" subtitle="친구를 초대하면 정산이 가능해요" />
+          ) : expenses.length === 0 ? (
+            <EmptyState icon="💰" title="아직 지출이 없어요" subtitle="지출을 추가하면 정산 내역이 표시돼요" />
           ) : (
             <>
               {personalExpenses.length > 0 && (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                  <span className="text-xs text-amber-800">ℹ️ 개인 지출 {personalExpenses.length}건 ({personalTotal.toLocaleString()}원)은 정산에서 제외됐어요</span>
+                <div className={warning.banner}>
+                  <span className={warning.text}>ℹ️ 개인 지출 {personalExpenses.length}건 ({personalTotal.toLocaleString()}원)은 정산에서 제외됐어요</span>
                 </div>
               )}
               <div className={`${card.base} overflow-hidden`}>
@@ -828,8 +977,8 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                 </div>
                 {adjustedBalances.map(b => (
                   <div key={b.name} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0 gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold shrink-0">
-                      {b.name.slice(0, 1)}
+                    <div className={`w-7 h-7 rounded-full ${getAvatarColor(b.name)} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                      {getInitial(b.name)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800">{b.name}</p>
@@ -855,6 +1004,56 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                   </div>
                 ))}
               </div>
+
+              {remainderInfo !== null && !remainderInfo.balanced && remainingSettlements.length > 0 && (
+                <div className="rounded-xl px-4 py-3 bg-amber-50 border border-amber-100">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-700">1원 차이가 있어요</p>
+                      <p className="text-xs text-amber-500 mt-0.5">
+                        {Object.entries(remainderInfo.holders)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([name, cnt]) => `${name} ${cnt}회`)
+                          .join(' · ')} 부담 중
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowRemainderEdit(v => !v)}
+                      className="shrink-0 text-xs font-medium text-amber-600 bg-amber-100 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors"
+                    >
+                      {showRemainderEdit ? '닫기' : '변경'}
+                    </button>
+                  </div>
+                  {showRemainderEdit && (
+                    <div className="mt-3 space-y-2">
+                      {expensesWithRemainder.map(exp => (
+                        <div key={exp.id} className="bg-white rounded-lg px-3 py-2.5 border border-amber-100">
+                          <p className="text-xs text-gray-500 mb-2">
+                            {exp.title} · {calcKRW(exp.amount, exp.currency, rates).toLocaleString()}원
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {exp.split_with.map(m => (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => updateRemainderTo(exp.id, [m])}
+                                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                                  exp.remainder_to?.includes(m)
+                                    ? 'bg-amber-400 text-white border-amber-400'
+                                    : 'bg-white text-gray-500 border-gray-200 hover:border-amber-300'
+                                }`}
+                              >
+                                {m}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className={`${card.base} overflow-hidden`}>
                 <div className="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
@@ -884,7 +1083,7 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                       </div>
                       <input
                         type="number"
-                        placeholder="금액 (KRW)"
+                        placeholder="금액 (원)"
                         value={preAmount}
                         onChange={e => setPreAmount(e.target.value)}
                         required
@@ -898,10 +1097,9 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                     </form>
                   </div>
                 )}
-                {/* 미완료 이체 (앱 계산) — 회색 배경 */}
                 {remainingSettlements.map(s => (
                   <div key={`${s.from}-${s.to}`} className="flex items-center px-4 py-3 border-b border-gray-50 gap-2 bg-gray-50">
-                    <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                    <div className={settleDot.pending} />
                     <span className="text-sm font-semibold text-gray-400">{s.from}</span>
                     <span className="text-gray-300 text-xs">→</span>
                     <span className="text-sm font-semibold text-indigo-300">{s.to}</span>
@@ -916,28 +1114,33 @@ export default function ExpenseTab({ tripId, userName, budget = 0, members, isAc
                     </button>
                   </div>
                 ))}
-                {/* 완료된 송금 기록 — 흰 배경 dimmed */}
-                {expenses.filter(e => {
-                  if (e.category !== '정산') return false
-                  if (e.expense_refs === null || e.expense_refs === undefined) return false
-                  if (e.expense_refs.length === 0) return true
-                  return e.expense_refs.every(ref => nonSettleIds.has(ref))
-                }).map(exp => {
-                  const dateStr = new Date(exp.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+                {expenses.filter(e => isValidSettlement(e, nonSettleIds)).map(exp => {
+                  if (editingId === exp.id) {
+                    return (
+                      <div key={exp.id} className="p-4 border-b border-gray-50">
+                        <p className="text-sm font-semibold text-gray-700 mb-3">송금 기록 수정</p>
+                        <ExpenseForm form={form} setForm={setForm} members={members} rates={rates} remainderCounts={remainderCounts}
+                          onSubmit={updateExpense} submitLabel="저장" onCancel={() => setEditingId(null)} submitting={submitting}
+                        />
+                      </div>
+                    )
+                  }
+                  const dateStr = new Date(exp.date + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
                   return (
                     <div key={exp.id} className="flex items-center px-4 py-3 border-b border-gray-50 last:border-0 gap-2 opacity-50">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      <div className={settleDot.done} />
                       <span className="text-sm font-semibold text-gray-500">{exp.paid_by}</span>
                       <span className="text-gray-300 text-xs">→</span>
                       <span className="text-sm font-semibold text-indigo-400">{exp.split_with[0]}</span>
                       <span className="ml-auto text-sm font-bold text-gray-400 line-through">{exp.amount.toLocaleString()}원</span>
                       <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md shrink-0">{dateStr}</span>
+                      <KebabMenu items={[
+                        { label: '수정', onClick: () => startEdit(exp) },
+                        { label: '삭제', onClick: () => deleteExpense(exp.id), danger: true },
+                      ]} />
                     </div>
                   )
                 })}
-                {remainingSettlements.length === 0 && expenses.filter(e => e.category === '정산' && e.expense_refs !== null && e.expense_refs !== undefined).length === 0 && !showPreSettle && (
-                  <p className="px-4 py-4 text-sm text-gray-400 text-center">🎉 정산할 내용이 없어요</p>
-                )}
               </div>
             </>
           )}

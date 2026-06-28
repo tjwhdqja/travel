@@ -1,25 +1,26 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
+import { useUndoDelete } from '../lib/useUndoDelete'
+import { getAllDates } from '../lib/utils'
 import KebabMenu from '../components/KebabMenu'
 import PillButton from '../components/PillButton'
 import LocationInput from '../components/LocationInput'
 import AIResultPanel from '../components/AIResultPanel'
-import { btn, card, input as inputCls, textarea as textareaCls } from '../lib/design'
+import EmptyState from '../components/EmptyState'
+import { btn, card, badge, input as inputCls, textarea as textareaCls } from '../lib/design'
 import Spinner from '../components/Spinner'
 import Toast, { useToast } from '../components/Toast'
-import { GROQ_API_KEY } from '../lib/groq'
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
+import { GROQ_API_KEY, MAPS_API_KEY } from '../lib/groq'
 
 interface Schedule {
   id: string
-  trip_id: string
+  trip_id: string | null
   date: string
   time: string | null
   title: string
   location: string | null
   note: string | null
   created_by: string | null
-  participants?: string[]
   category: string
   sort_order: number
 }
@@ -34,7 +35,7 @@ type FormState = {
 }
 
 const CATEGORIES = [
-  { id: '교통', emoji: '✈️' },
+  { id: '교통', emoji: '🚌' },
   { id: '식비', emoji: '🍽' },
   { id: '숙박', emoji: '🏨' },
   { id: '관광', emoji: '🎡' },
@@ -45,7 +46,6 @@ const CATEGORIES = [
 const AI_STYLES = ['관광 위주', '맛집 투어', '휴양/힐링', '쇼핑 위주', '액티비티']
 
 function getCategoryEmoji(category: string) {
-  if (category === '식사') return '🍽'
   return CATEGORIES.find(c => c.id === category)?.emoji ?? '📌'
 }
 
@@ -68,6 +68,7 @@ function RouteConnector() {
   )
 }
 
+interface GPlace { displayName?: { text: string }; formattedAddress?: string; rating?: number; userRatingCount?: number }
 interface NearbyPlace { name: string; address: string; rating: number | null; ratingCount: number | null }
 
 function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
@@ -107,12 +108,12 @@ function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
         }),
       })
       const data = await res.json()
-      setPlaces((data.places ?? []).map((p: any) => ({
+      setPlaces((data.places ?? []).map((p: GPlace) => ({
         name: p.displayName?.text ?? '', address: p.formattedAddress ?? '',
         rating: p.rating ?? null, ratingCount: p.userRatingCount ?? null,
       })))
     } catch (e: unknown) {
-      setError((e as GeolocationPositionError)?.code === 1 ? '위치 권한을 허용해주세요' : '주변 장소를 불러오지 못했습니다')
+      setError((e as GeolocationPositionError)?.code === 1 ? '위치 권한을 허용해주세요' : '주변 장소를 불러오지 못했어요')
     } finally { setLoading(false) }
   }
 
@@ -139,7 +140,7 @@ function NearbyRecommendations({ onAdd }: { onAdd: (name: string) => void }) {
                 </div>
                 <div className="flex gap-1.5 flex-shrink-0 mt-0.5">
                   <a href={`https://maps.google.com/?q=${encodeURIComponent(p.name)}`} target="_blank" rel="noopener noreferrer"
-                    className={btn.inlineGhost}>지도</a>
+                    className={btn.inlineGhost}>지도 보기</a>
                   <button type="button" onClick={() => onAdd(p.name)} className={btn.inlineSolid}>+ 추가</button>
                 </div>
               </div>
@@ -239,10 +240,10 @@ function ScheduleItem({ item, editingId, form, setForm, startDate, endDate, onSt
   return (
     <div className="flex items-stretch gap-2">
       <div className="relative flex flex-col items-end w-14 flex-shrink-0">
-        {!isFirst && <div className="absolute top-0 right-[5px] w-0.5 h-[16px] bg-gray-200" />}
-        <div className="flex items-center gap-1.5 pt-4">
+        {!isFirst && <div className="absolute top-0 right-[5px] w-0.5 h-[10px] bg-gray-200" />}
+        <div className="flex items-center gap-1.5 pt-2.5">
           <span className="relative z-10 text-[11px] text-gray-400 font-medium leading-none tabular-nums">
-            {item.time ? item.time.slice(0, 5) : ''}
+            {item.time ? item.time.slice(0, 5) : '미정'}
           </span>
           <div className="relative z-10 w-3 h-3 rounded-full bg-indigo-400 ring-2 ring-white shadow-sm flex-shrink-0" />
         </div>
@@ -292,22 +293,17 @@ interface Props {
 }
 
 const emptyForm = (date: string): FormState => ({
-  date, time: '', title: '', location: '', note: '', category: '기타'
+  date, time: '', title: '', location: '', note: '', category: '교통'
 })
 
-function getAllDates(start: string, end: string): string[] {
-  const dates: string[] = []
-  const cur = new Date(start + 'T00:00:00')
-  const last = new Date(end + 'T00:00:00')
-  while (cur <= last) {
-    const y = cur.getFullYear()
-    const m = String(cur.getMonth() + 1).padStart(2, '0')
-    const d = String(cur.getDate()).padStart(2, '0')
-    dates.push(`${y}-${m}-${d}`)
-    cur.setDate(cur.getDate() + 1)
-  }
-  return dates
+function sorted(list: Schedule[]): Schedule[] {
+  return [...list].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    if ((a.time ?? '') !== (b.time ?? '')) return (a.time ?? '').localeCompare(b.time ?? '')
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+  })
 }
+
 
 export default function ScheduleTab({ tripId, userName, startDate, endDate, destination, isActive = true }: Props) {
   const [schedules, setSchedules] = useState<Schedule[]>([])
@@ -316,26 +312,43 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
   const [showNearby, setShowNearby] = useState(false)
   const [showAI, setShowAI] = useState(false)
   const [aiResult, setAiResult] = useState<AIDay[] | null>(null)
+  const [selectedAiDays, setSelectedAiDays] = useState<Set<number>>(new Set())
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
   const [aiStyle, setAiStyle] = useState('관광 위주')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(() => {
+    const today = new Date().toISOString().split('T')[0]
+    return today >= startDate && today <= endDate ? today : null
+  })
   const [form, setForm] = useState<FormState>(emptyForm(startDate))
   const [submitting, setSubmitting] = useState(false)
   const { toast, showToast } = useToast()
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingDeleteRef = useRef<{ id: string; item: Schedule } | null>(null)
+  const deleteScheduleUndo = useUndoDelete(
+    'schedules', setSchedules, showToast, '일정을 삭제했어요',
+    (prev, item) => sorted([...prev, item])
+  )
 
-  const days = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1
-
-  useEffect(() => {
-    if (userName) fetchAll()
-  }, [tripId, userName])
+  const days = Math.round((new Date(endDate + 'T00:00:00').getTime() - new Date(startDate + 'T00:00:00').getTime()) / 86400000) + 1
 
   useEffect(() => {
     if (!isActive) { setShowForm(false); setShowAI(false); setShowNearby(false); setEditingId(null) }
   }, [isActive])
+
+  useEffect(() => {
+    setSelectedAiDays(aiResult ? new Set(aiResult.map(d => d.day)) : new Set())
+  }, [aiResult])
+
+  const fetchAll = useCallback(async () => {
+    const { data: scheduleData, error } = await supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('time', { nullsFirst: false }).order('sort_order')
+    if (error) showToast('일정을 불러오지 못했어요', 'error')
+    setSchedules((scheduleData ?? []) as Schedule[])
+    setLoading(false)
+  }, [tripId, showToast])
+
+  useEffect(() => {
+    if (userName) fetchAll()
+  }, [tripId, userName, fetchAll])
 
   useEffect(() => {
     const channel = supabase
@@ -353,20 +366,6 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     return () => { supabase.removeChannel(channel) }
   }, [tripId])
 
-  async function fetchAll() {
-    const { data: scheduleData, error } = await supabase.from('schedules').select('*').eq('trip_id', tripId).order('date').order('time')
-    if (error) showToast('일정을 불러오지 못했어요', 'error')
-    setSchedules(scheduleData ?? [])
-    setLoading(false)
-  }
-
-  function sorted(list: Schedule[]) {
-    return [...list].sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date)
-      return (a.time ?? '').localeCompare(b.time ?? '')
-    })
-  }
-
   async function addSchedule(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -376,7 +375,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
       .insert([{ ...form, trip_id: tripId, created_by: userName, sort_order }])
       .select().single()
     if (data) {
-      setSchedules(prev => sorted([...prev, data]))
+      setSchedules(prev => sorted([...prev, data as Schedule]))
       setShowForm(false)
       setForm(emptyForm(selectedDate ?? startDate))
       showToast('일정을 추가했어요')
@@ -392,9 +391,9 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     const { data } = await supabase
       .from('schedules')
       .update({ date: form.date, time: form.time || null, title: form.title, location: form.location || null, note: form.note || null, category: form.category })
-      .eq('id', editingId).select().single()
+      .eq('id', editingId!).select().single()
     if (data) {
-      setSchedules(prev => sorted(prev.map(s => s.id === editingId ? data : s)))
+      setSchedules(prev => sorted(prev.map(s => s.id === editingId ? data as Schedule : s)))
       setEditingId(null)
       showToast('일정을 수정했어요')
     } else {
@@ -414,7 +413,7 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     const prompt = `${destination} ${days === 1 ? '당일치기' : `${days - 1}박${days}일`} 여행 일정을 짜줘. 스타일: ${aiStyle}.
 시작일: ${startDate}, 종료일: ${endDate}.
 아래 JSON 배열 형식으로만 답해 (설명 없이):
-[{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식사|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
+[{"day":1,"date":"${startDate}","schedules":[{"time":"09:00","title":"일정명","location":"장소명","category":"교통|식비|숙박|관광|쇼핑|기타","note":"간단한 설명"}]}]
 하루에 4~6개 일정. category는 반드시 교통/식비/숙박/관광/쇼핑/기타 중 하나.`
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -428,28 +427,31 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
       if (!jsonMatch) throw new Error('파싱 실패')
       setAiResult(JSON.parse(jsonMatch[0]) as AIDay[])
     } catch {
-      setAiError('일정 생성에 실패했습니다. 다시 시도해주세요.')
+      setAiError('일정 생성에 실패했어요. 다시 시도해주세요.')
     } finally {
       setAiLoading(false)
     }
   }
 
-  async function addAllFromAI(aiDays: AIDay[]) {
-    const inserts = aiDays.flatMap(day =>
+  async function addSelectedFromAI() {
+    if (!aiResult) return
+    const toAdd = aiResult.filter(d => selectedAiDays.has(d.day))
+    if (toAdd.length === 0) { showToast('추가할 날짜를 선택해주세요', 'error'); return }
+    const inserts = toAdd.flatMap(day =>
       day.schedules.map((s, idx) => ({
         trip_id: tripId, created_by: userName,
         date: day.date, time: s.time || null,
         title: s.title, location: s.location || null,
         note: s.note || null, category: s.category || '기타',
-        participants: [], sort_order: idx,
+        sort_order: idx,
       }))
     )
     const { data } = await supabase.from('schedules').insert(inserts).select()
     if (data) {
-      setSchedules(prev => sorted([...prev, ...data]))
+      setSchedules(prev => sorted([...prev, ...(data as Schedule[])]))
       setShowAI(false)
       setAiResult(null)
-      showToast(`${data.length}개 일정을 추가했어요`)
+      showToast(`${data.length}개를 추가했어요`)
     } else {
       showToast('일정 추가에 실패했어요', 'error')
     }
@@ -460,30 +462,12 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
     setShowForm(true)
     setEditingId(null)
     setForm({ ...emptyForm(selectedDate ?? startDate), location: name })
+    showToast(`"${name}" 장소가 입력됐어요`)
   }
 
   async function deleteSchedule(id: string) {
     const item = schedules.find(s => s.id === id)
-    if (!item) return
-    if (pendingDeleteRef.current) {
-      clearTimeout(undoTimerRef.current!)
-      await supabase.from('schedules').delete().eq('id', pendingDeleteRef.current.id)
-    }
-    setSchedules(prev => prev.filter(s => s.id !== id))
-    const timer = setTimeout(async () => {
-      await supabase.from('schedules').delete().eq('id', id)
-      pendingDeleteRef.current = null
-    }, 3000)
-    undoTimerRef.current = timer
-    pendingDeleteRef.current = { id, item }
-    showToast('일정을 삭제했어요', 'success', {
-      label: '실행 취소',
-      onClick: () => {
-        clearTimeout(timer)
-        setSchedules(prev => sorted([...prev, item]))
-        pendingDeleteRef.current = null
-      },
-    })
+    if (item) await deleteScheduleUndo(id, item)
   }
 
   function formatDate(dateStr: string) {
@@ -504,120 +488,122 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
 
   const allDates = getAllDates(startDate, endDate)
   const filteredDates = selectedDate ? [selectedDate] : allDates
+  const todayStr = new Date().toISOString().split('T')[0]
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        {!showForm && !editingId && (
-          <button
-            type="button"
-            onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(selectedDate ?? startDate)) }}
-            className={btn.primary}
-          >
-            + 일정 추가
-          </button>
-        )}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false); setEditingId(null) }}
-            aria-expanded={showAI}
-            className={`flex-1 ${btn.toggle(showAI)}`}
-          >
-            ✨ AI 생성
-          </button>
-          <button
-            type="button"
-            onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false); setEditingId(null) }}
-            aria-expanded={showNearby}
-            className={`flex-1 ${btn.toggle(showNearby)}`}
-          >
-            📍 주변 추천
-          </button>
-        </div>
-      </div>
-
-      <div className="flex items-start w-full py-2 overflow-x-auto gap-1">
+      {!showForm && !editingId && (
         <button
           type="button"
-          onClick={() => setSelectedDate(null)}
-          className="flex flex-col items-center gap-1 p-0 flex-shrink-0"
+          onClick={() => { setShowForm(true); setShowNearby(false); setShowAI(false); setEditingId(null); setForm(emptyForm(selectedDate ?? startDate)) }}
+          className={btn.primary}
         >
-          <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-xs font-bold transition ${
-            selectedDate === null ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-gray-200 text-gray-400 hover:border-indigo-300'
-          }`}>
-            전체
-          </div>
-          <span className={`text-[10px] font-medium ${selectedDate === null ? 'text-indigo-500' : 'text-gray-400'}`}>All</span>
+          + 일정 추가
         </button>
-        {allDates.map((date) => {
-          const dayNum = getDayNumber(date)
-          const isSelected = selectedDate === date
-          return (
-            <Fragment key={date}>
-              <div className="flex-1 h-px bg-gray-200 mt-[18px]" />
-              <button type="button" onClick={() => setSelectedDate(prev => prev === date ? null : date)} className="flex flex-col items-center gap-1 p-0 flex-shrink-0">
-                <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-xs font-bold transition ${
-                  isSelected ? 'bg-indigo-500 border-indigo-500 text-white' : 'bg-white border-gray-200 text-gray-400 hover:border-indigo-300'
-                }`}>
-                  {dayNum}
-                </div>
-                <span className={`text-[10px] font-medium ${isSelected ? 'text-indigo-500' : 'text-gray-400'}`}>Day {dayNum}</span>
-              </button>
-            </Fragment>
-          )
-        })}
-      </div>
-
-      {showAI && (
-        <AIResultPanel
-          title="AI 일정 생성"
-          subtitle={`${destination} · ${days === 1 ? '당일치기' : `${days - 1}박${days}일`}`}
-          options={
-            <div className="flex flex-wrap gap-2">
-              {AI_STYLES.map(s => (
-                <PillButton key={s} label={s} selected={aiStyle === s} onClick={() => setAiStyle(s)} />
-              ))}
-            </div>
-          }
-          generateLabel={`${days === 1 ? '당일치기' : `${days - 1}박${days}일`} 일정 생성`}
-          onGenerate={generateAI}
-          loading={aiLoading}
-          result={aiResult && (
-            <div className="space-y-3">
-              {aiResult.map(day => (
-                <div key={day.day}>
-                  <p className="text-xs font-bold text-indigo-500 mb-1">Day {day.day} · {day.date}</p>
-                  {day.schedules.map((s, i) => (
-                    <div key={`${day.day}-${i}`} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0">
-                      <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-800">{s.title}</p>
-                        {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
-          error={aiError}
-          onRetry={() => { setAiResult(null) }}
-          onAdd={() => addAllFromAI(aiResult!)}
-          addLabel="전체 일정에 추가"
-        />
       )}
-      {showNearby && <NearbyRecommendations onAdd={addFromNearby} />}
-
       {showForm && (
         <div className={`${card.base} p-5`}>
-          <h3 className="font-bold text-gray-800 mb-4">새 일정</h3>
+          <h3 className="font-bold text-gray-800 mb-4">일정 추가</h3>
           <ScheduleForm form={form} setForm={setForm}
             startDate={startDate} endDate={endDate}
             onSubmit={addSchedule} submitLabel="추가" onCancel={() => setShowForm(false)} submitting={submitting}
           />
         </div>
       )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => { setShowAI(v => !v); setShowNearby(false); setShowForm(false); setEditingId(null) }}
+          aria-expanded={showAI}
+          className={`flex-1 ${btn.toggle(showAI)}`}
+        >
+          ✨ AI 생성
+        </button>
+        <button
+          type="button"
+          onClick={() => { setShowNearby(v => !v); setShowForm(false); setShowAI(false); setEditingId(null) }}
+          aria-expanded={showNearby}
+          className={`flex-1 ${btn.toggle(showNearby)}`}
+        >
+          📍 주변 추천
+        </button>
+      </div>
+      {showAI && (
+          <AIResultPanel
+            title="AI 일정 생성"
+            subtitle={`${destination} · ${days === 1 ? '당일치기' : `${days - 1}박${days}일`}`}
+            options={
+              <div className="flex flex-wrap gap-2">
+                {AI_STYLES.map(s => (
+                  <PillButton key={s} label={s} selected={aiStyle === s} onClick={() => setAiStyle(s)} />
+                ))}
+              </div>
+            }
+            generateLabel={`${days === 1 ? '당일치기' : `${days - 1}박${days}일`} 일정 생성`}
+            onGenerate={generateAI}
+            loading={aiLoading}
+            result={aiResult && (
+              <div className="space-y-3">
+                {aiResult.map(day => (
+                  <div key={day.day}>
+                    <label className="flex items-center gap-2 cursor-pointer mb-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedAiDays.has(day.day)}
+                        onChange={e => setSelectedAiDays(prev => {
+                          const next = new Set(prev)
+                          e.target.checked ? next.add(day.day) : next.delete(day.day)
+                          return next
+                        })}
+                        className="accent-indigo-500"
+                      />
+                      <p className="text-xs font-bold text-indigo-500">{day.day}일차 · {day.date}</p>
+                    </label>
+                    {day.schedules.map((s, i) => (
+                      <div key={`${day.day}-${i}`} className="flex items-start gap-2 py-1.5 border-b border-gray-50 last:border-0 pl-5">
+                        <span className="text-xs text-gray-400 w-10 flex-shrink-0 pt-0.5">{s.time}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800">{s.title}</p>
+                          {s.location && <p className="text-xs text-gray-400">📍 {s.location}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            error={aiError}
+            onRetry={() => { setAiResult(null) }}
+            onAdd={addSelectedFromAI}
+            addLabel={`일정에 추가${selectedAiDays.size > 0 && selectedAiDays.size < (aiResult?.length ?? 0) ? ` (${selectedAiDays.size}일차)` : ''}`}
+          />
+        )}
+      {showNearby && <NearbyRecommendations onAdd={addFromNearby} />}
+
+      <div className="flex items-start w-full py-2 overflow-x-auto gap-1">
+        {allDates.map((date, index) => {
+          const dayNum = getDayNumber(date)
+          const isSelected = selectedDate === date
+          const isToday = date === todayStr
+          return (
+            <Fragment key={date}>
+              {index > 0 && <div className="flex-1 h-px bg-gray-200 mt-[18px]" />}
+              <button type="button" onClick={() => setSelectedDate(prev => prev === date ? null : date)} className="flex flex-col items-center gap-1 p-0 flex-shrink-0">
+                <div className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-xs font-bold transition ${
+                  isSelected ? 'bg-indigo-500 border-indigo-500 text-white' :
+                  isToday ? 'bg-amber-50 border-amber-300 text-amber-600' :
+                  'bg-white border-gray-200 text-gray-400 hover:border-indigo-300'
+                }`}>
+                  {dayNum}
+                </div>
+                <span className={`text-[10px] font-medium ${isSelected ? 'text-indigo-500' : isToday ? 'text-amber-500' : 'text-gray-400'}`}>
+                  {isToday ? '오늘' : `${dayNum}일차`}
+                </span>
+              </button>
+            </Fragment>
+          )
+        })}
+      </div>
 
       {loading ? (
         <Spinner />
@@ -628,14 +614,14 @@ export default function ScheduleTab({ tripId, userName, startDate, endDate, dest
             return (
               <div key={date}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-indigo-100 text-indigo-600 text-xs font-bold px-2.5 py-1 rounded-full">
-                    Day {getDayNumber(date)}
+                  <span className={badge.day}>
+                    {getDayNumber(date)}일차
                   </span>
                   <span className="text-sm text-gray-500">{formatDate(date)}</span>
                 </div>
 
                 {items.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">아직 일정이 없어요</p>
+                  <EmptyState icon="📅" title="아직 일정이 없어요" subtitle="+ 일정 추가를 눌러보세요" />
                 ) : (
                   <div>
                     {items.map((item, index) => (

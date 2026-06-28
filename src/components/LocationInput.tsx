@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { input as inputCls } from '../lib/design'
-
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string
+import { MAPS_API_KEY } from '../lib/groq'
 
 interface Props {
   value: string
@@ -24,9 +23,9 @@ export default function LocationInput({ value, onChange, placeholder = '장소 �
         body: JSON.stringify({ input }),
       })
       const data = await res.json()
+      interface Suggestion { placePrediction?: { structuredFormat?: { mainText?: { text?: string } } } }
       const names: string[] = (data.suggestions ?? [])
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((s: any) => s.placePrediction?.structuredFormat?.mainText?.text ?? '')
+        .map((s: Suggestion) => s.placePrediction?.structuredFormat?.mainText?.text ?? '')
         .filter(Boolean).slice(0, 5)
       setSuggestions(names)
     } catch { setSuggestions([]) }

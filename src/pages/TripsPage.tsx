@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getDdayLabel, getAvatarColor } from '../lib/utils'
+import { useUndoDelete } from '../lib/useUndoDelete'
 import { ChevronDown, ChevronUp, Pencil } from 'lucide-react'
-import { btn, card, input as inputCls } from '../lib/design'
+import { btn, card, input as inputCls, badge } from '../lib/design'
 import KebabMenu from '../components/KebabMenu'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
@@ -14,8 +16,8 @@ interface Trip {
   destination: string
   start_date: string
   end_date: string
-  budget: number
-  created_at: string
+  budget: number | null
+  created_at: string | null
   created_by: string | null
 }
 
@@ -95,7 +97,7 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel, submi
             <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} required className={inputCls} />
           </div>
           <div className="flex-1">
-            <label className="text-xs text-gray-500 mb-1 block">귀국일</label>
+            <label className="text-xs text-gray-500 mb-1 block">종료일</label>
             <input type="date" value={form.end_date} min={form.start_date} onChange={e => setForm({ ...form, end_date: e.target.value })} required className={inputCls} />
           </div>
         </div>
@@ -103,7 +105,7 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel, submi
           <div className="flex flex-wrap gap-1.5">
             {[10, 50, 100, 200, 300, 500].map(wan => (
               <button key={wan} type="button"
-                onClick={() => setForm({ ...form, budget: String(wan * 10000) })}
+                onClick={() => setForm({ ...form, budget: String((Number(form.budget) || 0) + wan * 10000) })}
                 className={btn.chip}>
                 {wan}만
               </button>
@@ -135,6 +137,35 @@ function TripForm({ form, setForm, onSubmit, onCancel, title, submitLabel, submi
 
 const emptyForm: FormState = { name: '', destination: '', start_date: '', end_date: '', budget: '' }
 
+function getDuration(trip: { start_date: string; end_date: string }): string {
+  const start = new Date(trip.start_date + 'T00:00:00')
+  const end = new Date(trip.end_date + 'T00:00:00')
+  const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
+  return days === 1 ? '당일치기' : `${days - 1}박${days}일`
+}
+
+function getStatusPriority(trip: { start_date: string; end_date: string }): number {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const start = new Date(trip.start_date + 'T00:00:00')
+  const end = new Date(trip.end_date + 'T00:00:00')
+  if (today >= start && today <= end) return 0
+  if (today < start) return 1
+  return 2
+}
+
+function getStatus(trip: { start_date: string; end_date: string }): { label: string; variant: 'blue' | 'gray' | 'green' } {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const start = new Date(trip.start_date + 'T00:00:00')
+  const end = new Date(trip.end_date + 'T00:00:00')
+  if (today < start) return { label: '예정', variant: 'blue' }
+  if (today > end) return { label: '완료', variant: 'gray' }
+  return { label: '여행 중', variant: 'green' }
+}
+
+function formatDate(date: string) {
+  return new Date(date + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+}
+
 export default function TripsPage({ nickname, onNicknameChange }: { nickname: string; onNicknameChange: (n: string) => void }) {
   const navigate = useNavigate()
   const [trips, setTrips] = useState<Trip[]>([])
@@ -147,20 +178,46 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingDeleteRef = useRef<{ id: string; item: Trip } | null>(null)
   const { toast, showToast } = useToast()
+  const deleteTripUndo = useUndoDelete('trips', setTrips, showToast, '여행을 삭제했어요',
+    (prev, item) => [...prev, item].sort((a, b) => {
+      const pa = getStatusPriority(a), pb = getStatusPriority(b)
+      if (pa !== pb) return pa - pb
+      if (pa === 2) return b.start_date.localeCompare(a.start_date)
+      return a.start_date.localeCompare(b.start_date)
+    })
+  )
 
-  useEffect(() => { fetchTrips() }, [])
+  const fetchTrips = useCallback(async () => {
+    const { data: memberData, error } = await supabase
+      .from('trip_members').select('trip_id').eq('name', nickname)
+    if (error) { showToast('여행 목록을 불러오지 못했어요', 'error'); setLoading(false); return }
+    const tripIds = (memberData?.map(m => m.trip_id) ?? []).filter((id): id is string => id !== null)
+    if (tripIds.length === 0) { setTrips([]); setLoading(false); return }
+    const { data, error: tripsError } = await supabase
+      .from('trips').select('*').in('id', tripIds)
+    if (tripsError) { showToast('여행 목록을 불러오지 못했어요', 'error'); setLoading(false); return }
+    const sorted = (data ?? []).sort((a, b) => {
+      const pa = getStatusPriority(a), pb = getStatusPriority(b)
+      if (pa !== pb) return pa - pb
+      if (pa === 2) return b.start_date.localeCompare(a.start_date)
+      return a.start_date.localeCompare(b.start_date)
+    })
+    setTrips(sorted)
+    setLoading(false)
+  }, [nickname, showToast])
+
+  useEffect(() => { fetchTrips() }, [fetchTrips])
 
   useEffect(() => {
     const channel = supabase
       .channel(`trips:user:${nickname}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => { fetchTrips() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `created_by=eq.${nickname}` }, () => { fetchTrips() })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trip_members', filter: `name=eq.${nickname}` }, () => { fetchTrips() })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'trip_members', filter: `name=eq.${nickname}` }, () => { fetchTrips() })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [nickname])
+  }, [nickname, fetchTrips])
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -181,9 +238,8 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     const { error } = await supabase.from('profiles').update({ nickname: trimmed }).eq('id', user.id)
     if (error) { showToast('닉네임 변경에 실패했어요', 'error'); return }
 
-    // 이 사용자가 속한 여행 ID 목록 수집
     const { data: memberRows } = await supabase.from('trip_members').select('trip_id').eq('name', nickname)
-    const tripIds = memberRows?.map(m => m.trip_id) ?? []
+    const tripIds = (memberRows?.map(m => m.trip_id) ?? []).filter((id): id is string => id !== null)
 
     const updates = [
       supabase.from('trip_members').update({ name: trimmed }).eq('name', nickname),
@@ -192,10 +248,16 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
         supabase.from('schedules').update({ created_by: trimmed }).eq('created_by', nickname).in('trip_id', tripIds),
         supabase.from('checklists').update({ created_by: trimmed }).eq('created_by', nickname).in('trip_id', tripIds),
         supabase.from('expenses').update({ paid_by: trimmed }).eq('paid_by', nickname).in('trip_id', tripIds),
+        supabase.from('guide_items').update({ created_by: trimmed }).eq('created_by', nickname).in('trip_id', tripIds),
       ] : []),
     ]
 
-    await Promise.all(updates)
+    const results = await Promise.all(updates)
+    const hasError = results.some(r => r.error)
+    if (hasError) {
+      showToast('일부 데이터 업데이트에 실패했어요. 다시 시도해주세요.', 'error')
+      return
+    }
 
     // split_with 배열 내부의 닉네임도 교체 (배열 요소는 SDK로 직접 교체 불가라 fetch 후 업데이트)
     if (tripIds.length > 0) {
@@ -215,28 +277,48 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
       }
     }
 
+    if (tripIds.length > 0) {
+      const { data: remainderExpenses } = await supabase
+        .from('expenses')
+        .select('id, remainder_to')
+        .in('trip_id', tripIds)
+        .contains('remainder_to', [nickname])
+      if (remainderExpenses && remainderExpenses.length > 0) {
+        await Promise.all(
+          remainderExpenses.map(exp =>
+            supabase.from('expenses').update({
+              remainder_to: (exp.remainder_to as string[]).map((n: string) => n === nickname ? trimmed : n),
+            }).eq('id', exp.id)
+          )
+        )
+      }
+    }
+
+    if (tripIds.length > 0) {
+      const { data: settleExpenses } = await supabase
+        .from('expenses')
+        .select('id, title')
+        .eq('category', '정산')
+        .in('trip_id', tripIds)
+      const toUpdate = settleExpenses?.filter(e => typeof e.title === 'string' && e.title.includes(nickname)) ?? []
+      if (toUpdate.length > 0) {
+        await Promise.all(
+          toUpdate.map(e =>
+            supabase.from('expenses').update({ title: (e.title as string).replaceAll(nickname, trimmed) }).eq('id', e.id)
+          )
+        )
+      }
+    }
+
     onNicknameChange(trimmed)
     setEditingNickname(false)
     showToast('닉네임을 변경했어요')
   }
 
-  async function fetchTrips() {
-    const { data: memberData, error } = await supabase
-      .from('trip_members').select('trip_id').eq('name', nickname)
-    if (error) { showToast('여행 목록을 불러오지 못했어요', 'error'); setLoading(false); return }
-    const tripIds = memberData?.map(m => m.trip_id) ?? []
-    if (tripIds.length === 0) { setTrips([]); setLoading(false); return }
-    const { data, error: tripsError } = await supabase
-      .from('trips').select('*').in('id', tripIds).order('created_at', { ascending: false })
-    if (tripsError) { showToast('여행 목록을 불러오지 못했어요', 'error'); setLoading(false); return }
-    setTrips(data ?? [])
-    setLoading(false)
-  }
-
   async function createTrip(e: React.FormEvent) {
     e.preventDefault()
     if (form.end_date < form.start_date) {
-      showToast('귀국일이 출발일보다 빠를 수 없어요', 'error')
+      showToast('종료일이 출발일보다 빠를 수 없어요', 'error')
       return
     }
     setSubmitting(true)
@@ -251,7 +333,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
         await supabase.from('trips').delete().eq('id', data.id)
         showToast('여행 만들기에 실패했어요', 'error')
       } else {
-        setTrips([data, ...trips])
+        setTrips(prev => [data, ...prev])
         setShowForm(false)
         setForm(emptyForm)
         showToast('여행을 만들었어요')
@@ -266,7 +348,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     e.preventDefault()
     if (!editingTrip) return
     if (form.end_date < form.start_date) {
-      showToast('귀국일이 출발일보다 빠를 수 없어요', 'error')
+      showToast('종료일이 출발일보다 빠를 수 없어요', 'error')
       return
     }
     setSubmitting(true)
@@ -279,39 +361,24 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
       setTrips(prev => prev.map(t => t.id === data.id ? data : t))
       setEditingTrip(null)
       setForm(emptyForm)
-      showToast('여행을 수정했어요')
+      const { count } = await supabase.from('schedules')
+        .delete({ count: 'exact' })
+        .eq('trip_id', editingTrip.id)
+        .or(`date.lt.${form.start_date},date.gt.${form.end_date}`)
+      if (count && count > 0) {
+        showToast(`여행을 수정했어요 (범위 밖 일정 ${count}개 삭제)`)
+      } else {
+        showToast('여행을 수정했어요')
+      }
     } else {
       showToast('여행 수정에 실패했어요', 'error')
     }
     setSubmitting(false)
   }
 
-  async function commitTripDelete(tripId: string) {
-    await supabase.from('trips').delete().eq('id', tripId)
-  }
-
   async function deleteTrip(id: string) {
     const item = trips.find(t => t.id === id)
-    if (!item) return
-    if (pendingDeleteRef.current) {
-      clearTimeout(undoTimerRef.current!)
-      await commitTripDelete(pendingDeleteRef.current.id)
-    }
-    setTrips(prev => prev.filter(t => t.id !== id))
-    const timer = setTimeout(async () => {
-      await commitTripDelete(id)
-      pendingDeleteRef.current = null
-    }, 3000)
-    undoTimerRef.current = timer
-    pendingDeleteRef.current = { id, item }
-    showToast('여행을 삭제했어요', 'success', {
-      label: '실행 취소',
-      onClick: () => {
-        clearTimeout(timer)
-        setTrips(prev => [item, ...prev])
-        pendingDeleteRef.current = null
-      },
-    })
+    if (item) await deleteTripUndo(id, item)
   }
 
   function openEdit(trip: Trip) {
@@ -319,7 +386,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     setForm({
       name: trip.name, destination: trip.destination,
       start_date: trip.start_date, end_date: trip.end_date,
-      budget: trip.budget > 0 ? String(trip.budget) : ''
+      budget: (trip.budget ?? 0) > 0 ? String(trip.budget) : ''
     })
     setShowForm(false)
   }
@@ -328,38 +395,6 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
     setShowForm(false)
     setEditingTrip(null)
     setForm(emptyForm)
-  }
-
-  function getDuration(trip: Trip): string {
-    const start = new Date(trip.start_date + 'T00:00:00')
-    const end = new Date(trip.end_date + 'T00:00:00')
-    const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
-    return days === 1 ? '당일치기' : `${days - 1}박${days}일`
-  }
-
-  function getStatus(trip: Trip): { label: string; color: string } {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const start = new Date(trip.start_date + 'T00:00:00')
-    const end = new Date(trip.end_date + 'T00:00:00')
-    if (today < start) return { label: '예정', color: 'bg-blue-100 text-blue-600' }
-    if (today > end) return { label: '완료', color: 'bg-gray-100 text-gray-500' }
-    return { label: '여행중', color: 'bg-green-100 text-green-600' }
-  }
-
-  function getDday(trip: Trip): string {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const start = new Date(trip.start_date + 'T00:00:00')
-    const end = new Date(trip.end_date + 'T00:00:00')
-    if (today > end) return '완료'
-    if (today >= start) return 'D-day'
-    const diff = Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    return `D-${diff}`
-  }
-
-  function formatDate(date: string) {
-    return new Date(date + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
   }
 
   return (
@@ -372,7 +407,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
             onClick={() => setShowUserMenu(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-gray-50 transition"
           >
-            <div className="w-7 h-7 rounded-full bg-indigo-400 flex items-center justify-center text-white text-xs font-bold">
+            <div className={`w-7 h-7 rounded-full ${getAvatarColor(nickname)} flex items-center justify-center text-white text-xs font-bold`}>
               {nickname.slice(0, 1)}
             </div>
             <span className="text-sm text-gray-700 font-medium">{nickname}</span>
@@ -442,11 +477,11 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
         {loading ? (
           <Spinner />
         ) : trips.length === 0 ? (
-          <EmptyState icon="🗺️" title="아직 여행이 없어요" subtitle="새 여행을 만들어보세요!" />
+          <EmptyState icon="🗺️" title="아직 여행이 없어요" subtitle="새 여행을 만들어보세요" />
         ) : (
           trips.map(trip => {
             const status = getStatus(trip)
-            const dday = getDday(trip)
+            const dday = getDdayLabel(trip.start_date, trip.end_date, '완료')
             return (
               <div
                 key={trip.id}
@@ -456,7 +491,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2 flex-wrap flex-1">
                     <h3 className="font-bold text-gray-800">{trip.name}</h3>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${status.color}`}>{status.label}</span>
+                    <span className={badge[status.variant]}>{status.label}</span>
                   </div>
                   <div className="flex items-center gap-2 ml-2 shrink-0" onClick={e => e.stopPropagation()}>
                     <span className="text-indigo-500 text-sm font-bold">{dday}</span>
@@ -470,7 +505,7 @@ export default function TripsPage({ nickname, onNicknameChange }: { nickname: st
                 </div>
                 <p className="text-indigo-500 text-sm">📍 {trip.destination}</p>
                 <p className="text-gray-400 text-xs mt-1">{formatDate(trip.start_date)} ~ {formatDate(trip.end_date)} · {getDuration(trip)}</p>
-                {trip.budget > 0 && <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget.toLocaleString()}원</p>}
+                {(trip.budget ?? 0) > 0 && <p className="text-gray-400 text-xs mt-0.5">💰 예산 {trip.budget!.toLocaleString()}원</p>}
               </div>
             )
           })

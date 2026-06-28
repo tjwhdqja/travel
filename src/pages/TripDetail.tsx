@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { ChevronLeft, Calendar, Wallet, CheckSquare, ShoppingBag, Map } from 'lucide-react'
+import { getDdayLabel, getAvatarColor, getInitial } from '../lib/utils'
+import { badge, bottomTab } from '../lib/design'
+import { Calendar, Wallet, CheckSquare, ShoppingBag, Map, ChevronLeft } from 'lucide-react'
 import ScheduleTab from './ScheduleTab'
 import ExpenseTab from './ExpenseTab'
 import ChecklistTab from './ChecklistTab'
@@ -15,7 +17,7 @@ interface Trip {
   destination: string
   start_date: string
   end_date: string
-  budget: number
+  budget: number | null
 }
 
 type Tab = '일정' | '경비' | '체크' | '쇼핑' | '가이드'
@@ -27,17 +29,6 @@ const TABS: { id: Tab; icon: React.ComponentType<{ size?: number; className?: st
   { id: '쇼핑', icon: ShoppingBag, label: '쇼핑' },
   { id: '가이드', icon: Map, label: '가이드' },
 ]
-
-function getInitial(name: string) {
-  return name.slice(0, 1).toUpperCase()
-}
-
-function getAvatarColor(name: string) {
-  const COLORS = ['bg-indigo-400', 'bg-pink-400', 'bg-emerald-400', 'bg-amber-400', 'bg-violet-400', 'bg-sky-400']
-  let hash = 0
-  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xff
-  return COLORS[hash % COLORS.length]
-}
 
 function InviteButton({ tripId }: { tripId: string }) {
   const [copied, setCopied] = useState(false)
@@ -80,21 +71,41 @@ export default function TripDetail() {
   const [userName, setUserName] = useState('')
   const [members, setMembers] = useState<string[]>([])
   const [membersLoaded, setMembersLoaded] = useState(false)
+  const [expenseNavState, setExpenseNavState] = useState<{ category?: string; title?: string } | undefined>()
 
   useEffect(() => {
+    if (!id) return
+    const tripChannel = supabase
+      .channel(`trip:${id}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `id=eq.${id}` }, ({ new: row }) => {
+        setTrip(row as Trip)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(tripChannel) }
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    const membersChannel = supabase
+      .channel(`trip_members:${id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${id}` }, ({ new: row }) => {
+        setMembers(prev => prev.includes(row.name as string) ? prev : [...prev, row.name as string])
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${id}` }, ({ old: row }) => {
+        setMembers(prev => prev.filter(m => m !== (row as { name: string }).name))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(membersChannel) }
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
     supabase.from('trips').select('*').eq('id', id).single().then(({ data, error }) => {
       if (error || !data) { setNotFound(true); return }
       setTrip(data)
     })
-    supabase.from('trip_members').select('name').eq('trip_id', id).then(({ data }) => {
-      setMembers(data?.map(m => m.name) ?? [])
-      setMembersLoaded(true)
-    })
     supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
-        navigate('/')
-        return
-      }
+      if (!user) { navigate('/'); return }
       const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single()
       if (!profile?.nickname) {
         sessionStorage.setItem('post_nickname_redirect', `/trip/${id}`)
@@ -105,42 +116,60 @@ export default function TripDetail() {
       setUserName(name)
       const { data: existing } = await supabase.from('trip_members').select('id').eq('trip_id', id).eq('name', name).maybeSingle()
       if (!existing) {
-        const { error: joinError } = await supabase.from('trip_members').insert([{ trip_id: id, name }])
-        if (!joinError) setMembers(prev => prev.includes(name) ? prev : [...prev, name])
+        await supabase.from('trip_members').insert([{ trip_id: id, name }])
       }
+      const { data: allMembers } = await supabase.from('trip_members').select('name').eq('trip_id', id)
+      setMembers(allMembers?.map(m => m.name) ?? [name])
+      setMembersLoaded(true)
     })
   }, [id])
 
   if (notFound) return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+    <main className="min-h-screen flex flex-col items-center justify-center gap-3">
       <p className="text-gray-400">여행을 찾을 수 없어요</p>
-      <button type="button" onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 목록으로</button>
-    </div>
+      <button type="button" onClick={() => navigate('/')} className="text-indigo-500 text-sm">← 목록으로 돌아가기</button>
+    </main>
   )
 
   if (!trip) return (
-    <div className="min-h-screen flex items-center justify-center">
+    <main className="min-h-screen flex items-center justify-center">
       <Spinner />
-    </div>
+    </main>
   )
+
+  const ddayLabel = getDdayLabel(trip.start_date, trip.end_date)
+  const todayForDay = new Date(); todayForDay.setHours(0, 0, 0, 0)
+  const tripStartDate = new Date(trip.start_date + 'T00:00:00')
+  const tripEndDate = new Date(trip.end_date + 'T00:00:00')
+  const isInTrip = todayForDay >= tripStartDate && todayForDay <= tripEndDate
+  const dayInTrip = isInTrip ? Math.floor((todayForDay.getTime() - tripStartDate.getTime()) / 86400000) + 1 : null
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100 px-4 pt-3 pb-3">
-        <button type="button" onClick={() => navigate('/')} className="flex items-center gap-1 text-indigo-500 text-sm -ml-1 px-1 py-1.5 mb-1.5">
-          <ChevronLeft size={16} />
-          뒤로
-        </button>
+      <header className="bg-white border-b border-gray-100 px-4 pt-4 pb-3">
         <div className="flex items-start gap-2 mb-2.5">
+          <button type="button" onClick={() => navigate('/')} className="flex-shrink-0 mt-0.5 text-gray-400 hover:text-gray-600 transition">
+            <ChevronLeft size={22} />
+          </button>
           <h1 className="text-lg font-bold text-gray-800 flex-1 min-w-0">{trip.name}</h1>
-          <span className="flex-shrink-0 mt-0.5 text-xs font-medium text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">
-            {trip.destination}
-          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+            {(dayInTrip != null || ddayLabel != null) && (
+              <span className="text-xs font-bold text-indigo-500">
+                {dayInTrip != null ? `${dayInTrip}일차` : ddayLabel}
+              </span>
+            )}
+            <span className={badge.indigo}>
+              {trip.destination}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {members.map(m => (
             <div key={m} className="flex items-center gap-1.5">
-              <div className={`w-7 h-7 rounded-full ${getAvatarColor(m)} flex items-center justify-center text-white text-xs font-bold`}>
+              <div
+                title={m}
+                className={`w-7 h-7 rounded-full ${getAvatarColor(m)} flex items-center justify-center text-white text-xs font-bold ${m === userName ? 'ring-2 ring-offset-1 ring-indigo-400' : ''}`}
+              >
                 {getInitial(m)}
               </div>
               <span className="text-xs text-gray-500">{m}</span>
@@ -158,9 +187,7 @@ export default function TripDetail() {
             role="tab"
             aria-selected={activeTab === tab.id}
             onClick={() => { setActiveTab(tab.id); setMountedTabs(prev => new Set([...prev, tab.id])) }}
-            className={`flex-1 py-2.5 flex flex-col items-center gap-1 transition ${
-              activeTab === tab.id ? 'text-indigo-500 border-b-2 border-indigo-500' : 'text-gray-400'
-            }`}
+            className={bottomTab(activeTab === tab.id)}
           >
             <tab.icon size={16} />
             <span className="text-[11px] font-medium">{tab.label}</span>
@@ -174,10 +201,10 @@ export default function TripDetail() {
         ) : (
           <>
             {mountedTabs.has('일정') && <div className={activeTab !== '일정' ? 'hidden' : ''}><ScheduleTab tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} destination={trip.destination} isActive={activeTab === '일정'} /></div>}
-            {mountedTabs.has('경비') && <div className={activeTab !== '경비' ? 'hidden' : ''}><ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget} members={members} isActive={activeTab === '경비'} destination={trip.destination} /></div>}
-            {mountedTabs.has('체크') && <div className={activeTab !== '체크' ? 'hidden' : ''}><ChecklistTab tripId={trip.id} userName={userName} /></div>}
-            {mountedTabs.has('쇼핑') && <div className={activeTab !== '쇼핑' ? 'hidden' : ''}><ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} isActive={activeTab === '쇼핑'} /></div>}
-            {mountedTabs.has('가이드') && <div className={activeTab !== '가이드' ? 'hidden' : ''}><GuideTab destination={trip.destination} isActive={activeTab === '가이드'} /></div>}
+            {mountedTabs.has('경비') && <div className={activeTab !== '경비' ? 'hidden' : ''}><ExpenseTab tripId={trip.id} userName={userName} budget={trip.budget ?? 0} members={members} isActive={activeTab === '경비'} destination={trip.destination} navState={expenseNavState} onNavStateConsumed={() => setExpenseNavState(undefined)} /></div>}
+            {mountedTabs.has('체크') && <div className={activeTab !== '체크' ? 'hidden' : ''}><ChecklistTab tripId={trip.id} userName={userName} isActive={activeTab === '체크'} /></div>}
+            {mountedTabs.has('쇼핑') && <div className={activeTab !== '쇼핑' ? 'hidden' : ''}><ShoppingTab tripId={trip.id} userName={userName} destination={trip.destination} isActive={activeTab === '쇼핑'} onNavigateToExpense={(itemName) => { setExpenseNavState({ category: '쇼핑', title: itemName }); setActiveTab('경비'); setMountedTabs(prev => new Set([...prev, '경비'])) }} /></div>}
+            {mountedTabs.has('가이드') && <div className={activeTab !== '가이드' ? 'hidden' : ''}><GuideTab destination={trip.destination} isActive={activeTab === '가이드'} tripId={trip.id} userName={userName} startDate={trip.start_date} endDate={trip.end_date} onNavigateToSchedule={() => { setActiveTab('일정'); setMountedTabs(prev => new Set([...prev, '일정'])) }} onNavigateToExpense={(category) => { setExpenseNavState({ category }); setActiveTab('경비'); setMountedTabs(prev => new Set([...prev, '경비'])) }} /></div>}
           </>
         )}
       </main>

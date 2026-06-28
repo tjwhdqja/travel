@@ -4,17 +4,14 @@ import { btn, card } from '../lib/design'
 import Spinner from './Spinner'
 
 interface Props {
-  // idle 상태 콘텐츠
   title: string
   subtitle?: string
   options?: ReactNode
   generateLabel?: string
   onGenerate: () => void
-  // 상태
   loading: boolean
   result: ReactNode | null
   error?: string
-  // 완료 상태 액션
   onRetry: () => void
   onAdd: () => void
   addLabel?: string
@@ -27,7 +24,6 @@ export default function AIResultPanel({
 }: Props) {
   return (
     <div className={`${card.base} overflow-hidden`}>
-      {/* 헤더 */}
       <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-gray-50">
         <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
           <Sparkles size={13} className="text-indigo-500" />
@@ -39,7 +35,6 @@ export default function AIResultPanel({
       </div>
 
       <div className="px-4 pb-4 pt-3 space-y-3">
-        {/* idle: 옵션 + 생성 버튼 */}
         {!loading && !result && (
           <>
             {options && <div>{options}</div>}
@@ -54,14 +49,12 @@ export default function AIResultPanel({
           </>
         )}
 
-        {/* 로딩 */}
         {loading && (
           <div className="py-4 flex justify-center">
             <Spinner />
           </div>
         )}
 
-        {/* 결과 */}
         {!loading && result && (
           <>
             <div className="max-h-96 overflow-y-auto">

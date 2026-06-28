@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { btn, input as inputCls } from '../lib/design'
+import { btn, card, input as inputCls } from '../lib/design'
 
 interface Props {
   userId: string
@@ -23,7 +23,7 @@ export default function NicknameSetupPage({ userId, onComplete }: Props) {
       .from('profiles')
       .upsert([{ id: userId, nickname: nickname.trim() }])
     if (error) {
-      setError('저장에 실패했어요. 다시 시도해주세요.')
+      setError('저장에 실패했어요')
     } else {
       onComplete(nickname.trim())
     }
@@ -31,10 +31,10 @@ export default function NicknameSetupPage({ userId, onComplete }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center p-6">
+      <div className={`${card.base} p-8 w-full max-w-sm`}>
         <div className="text-center mb-8">
-          <div className="text-5xl mb-4">👋</div>
+          <div className="text-4xl mb-3">👋</div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">처음 오셨군요!</h1>
           <p className="text-sm text-gray-400">여행 앱에서 사용할 닉네임을 정해주세요</p>
         </div>
@@ -58,6 +58,6 @@ export default function NicknameSetupPage({ userId, onComplete }: Props) {
           </button>
         </form>
       </div>
-    </div>
+    </main>
   )
 }

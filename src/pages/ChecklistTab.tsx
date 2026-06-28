@@ -1,15 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useUndoDelete, sortByCreatedAt } from '../lib/useUndoDelete'
+import KebabMenu from '../components/KebabMenu'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
 import Toast, { useToast } from '../components/Toast'
 import { btn, card, input as inputCls } from '../lib/design'
+import CheckProgress from '../components/CheckProgress'
 
 interface CheckItem {
   id: string
   text: string
-  checked: boolean
+  checked: boolean | null
   created_by: string | null
+  created_at: string | null
 }
 
 const PRESET_GROUPS = [
@@ -47,21 +51,34 @@ const PRESET_GROUPS = [
 interface Props {
   tripId: string
   userName: string
+  isActive?: boolean
 }
 
-export default function ChecklistTab({ tripId, userName }: Props) {
+export default function ChecklistTab({ tripId, userName, isActive = true }: Props) {
   const [items, setItems] = useState<CheckItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [newText, setNewText] = useState('')
   const [showPresets, setShowPresets] = useState(false)
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const { toast, showToast } = useToast()
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingDeleteRef = useRef<{ id: string; item: CheckItem } | null>(null)
+  const deleteItem = useUndoDelete('checklists', setItems, showToast, '준비물을 삭제했어요', sortByCreatedAt)
 
-  useEffect(() => { fetchItems() }, [tripId])
+  const fetchItems = useCallback(async () => {
+    const { data, error } = await supabase.from('checklists').select('*').eq('trip_id', tripId).eq('type', 'packing').order('created_at')
+    if (error) showToast('체크리스트를 불러오지 못했어요', 'error')
+    setItems(data ?? [])
+    setLoading(false)
+  }, [tripId, showToast])
+
+  useEffect(() => { fetchItems() }, [fetchItems])
+
+  useEffect(() => {
+    if (!isActive) { setShowForm(false); setEditingId(null) }
+  }, [isActive])
 
   useEffect(() => {
     if (items.filter(i => i.checked).length === 0) setConfirmDeleteAll(false)
@@ -71,9 +88,11 @@ export default function ChecklistTab({ tripId, userName }: Props) {
     const channel = supabase
       .channel(`checklists:${tripId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        if ((row as { type: string }).type !== 'packing') return
         setItems(prev => prev.some(i => i.id === row.id) ? prev : [...prev, row as CheckItem])
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
+        if ((row as { type: string }).type !== 'packing') return
         setItems(prev => prev.map(i => i.id === row.id ? row as CheckItem : i))
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
@@ -83,29 +102,25 @@ export default function ChecklistTab({ tripId, userName }: Props) {
     return () => { supabase.removeChannel(channel) }
   }, [tripId])
 
-  async function fetchItems() {
-    const { data, error } = await supabase.from('checklists').select('*').eq('trip_id', tripId).eq('type', 'packing').order('created_at')
-    if (error) showToast('체크리스트를 불러오지 못했어요', 'error')
-    setItems(data ?? [])
-    setLoading(false)
-  }
-
   async function deleteAllChecked() {
     const ids = items.filter(i => i.checked).map(i => i.id)
     if (ids.length === 0) return
     const { error } = await supabase.from('checklists').delete().in('id', ids)
-    if (error) { showToast('삭제에 실패했어요', 'error'); return }
+    if (error) { showToast('체크된 항목 삭제에 실패했어요', 'error'); return }
     setItems(prev => prev.filter(i => !i.checked))
     showToast(`${ids.length}개를 삭제했어요`)
   }
 
-  async function addItem(text: string) {
-    if (!text.trim()) return
+  async function addItem(text: string): Promise<boolean> {
+    if (!text.trim()) return false
+    if (items.some(i => i.text === text.trim())) { showToast('이미 추가된 준비물이에요', 'error'); return false }
+    setSubmitting(true)
     const { data } = await supabase.from('checklists')
       .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'packing' }])
       .select().single()
-    if (data) { setItems(prev => [...prev, data]); showToast('준비물을 추가했어요'); setNewText('') }
-    else { showToast('준비물 추가에 실패했어요', 'error') }
+    setSubmitting(false)
+    if (data) { setItems(prev => [...prev, data]); showToast('준비물을 추가했어요'); return true }
+    showToast('준비물 추가에 실패했어요', 'error'); return false
   }
 
   async function toggleItem(item: CheckItem) {
@@ -115,58 +130,56 @@ export default function ChecklistTab({ tripId, userName }: Props) {
 
   async function saveEdit(id: string) {
     if (!editingText.trim()) return
+    setSubmitting(true)
     const { data } = await supabase.from('checklists').update({ text: editingText.trim() }).eq('id', id).select().single()
-    if (data) { setItems(prev => prev.map(i => i.id === id ? data : i)); setEditingId(null) }
-    else { showToast('수정에 실패했어요', 'error') }
+    setSubmitting(false)
+    if (data) { setItems(prev => prev.map(i => i.id === id ? data : i)); setEditingId(null); showToast('준비물을 수정했어요') }
+    else { showToast('준비물 수정에 실패했어요', 'error') }
   }
 
-  async function deleteItem(id: string) {
+  async function handleDeleteItem(id: string) {
     const item = items.find(i => i.id === id)
-    if (!item) return
-    if (pendingDeleteRef.current) {
-      clearTimeout(undoTimerRef.current!)
-      await supabase.from('checklists').delete().eq('id', pendingDeleteRef.current.id)
-    }
-    setItems(prev => prev.filter(i => i.id !== id))
-    const timer = setTimeout(async () => {
-      await supabase.from('checklists').delete().eq('id', id)
-      pendingDeleteRef.current = null
-    }, 3000)
-    undoTimerRef.current = timer
-    pendingDeleteRef.current = { id, item }
-    showToast('삭제했어요', 'success', {
-      label: '실행 취소',
-      onClick: () => {
-        clearTimeout(timer)
-        setItems(prev => [...prev, item])
-        pendingDeleteRef.current = null
-      },
-    })
+    if (item) await deleteItem(id, item)
   }
 
   const checkedCount = items.filter(i => i.checked).length
   const remaining = items.filter(i => !i.checked)
   const checked = items.filter(i => i.checked)
+
   return (
     <div className="space-y-4">
-      <form onSubmit={e => { e.preventDefault(); addItem(newText) }} className="flex gap-2">
-        <input
-          placeholder="준비물 추가"
-          value={newText}
-          onChange={e => setNewText(e.target.value)}
-          className={`flex-1 ${inputCls}`}
-        />
-        <button type="submit" className={btn.submit}>추가</button>
-      </form>
+      {!showForm && !editingId && (
+        <button
+          type="button"
+          onClick={() => { setShowForm(true); setShowPresets(false); setNewText('') }}
+          className={btn.primary}
+        >
+          + 준비물 추가
+        </button>
+      )}
+      {showForm && (
+        <div className={`${card.base} p-5`}>
+          <h3 className="font-bold text-gray-800 mb-4">준비물 추가</h3>
+          <form onSubmit={async e => { e.preventDefault(); const ok = await addItem(newText); if (ok) { setShowForm(false); setNewText('') } }} className="space-y-3">
+            <input autoFocus placeholder="준비물 이름" value={newText} onChange={e => setNewText(e.target.value)} className={inputCls} />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setShowForm(false); setNewText('') }} className={btn.secondary}>취소</button>
+              <button type="submit" disabled={submitting} className={btn.action}>추가</button>
+            </div>
+          </form>
+        </div>
+      )}
 
-      <button
-        type="button"
-        onClick={() => setShowPresets(v => !v)}
-        aria-expanded={showPresets}
-        className={`w-full ${btn.toggle(showPresets)}`}
-      >
-        ✨ 준비물 추천 {showPresets ? '닫기' : '보기'}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setShowPresets(v => !v)}
+          aria-expanded={showPresets}
+          className={`flex-1 ${btn.toggle(showPresets)}`}
+        >
+          📋 준비물 추천 {showPresets ? '닫기' : '보기'}
+        </button>
+      </div>
 
       {showPresets && (
         <div className={`${card.section} space-y-4`}>
@@ -192,25 +205,27 @@ export default function ChecklistTab({ tripId, userName }: Props) {
       {loading ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <EmptyState icon="✅" title="준비물을 추가해보세요" subtitle="또는 추천 준비물 보기를 눌러보세요" />
+        <EmptyState icon="✅" title="아직 준비물이 없어요" subtitle="위에서 직접 추가하거나 추천 보기를 눌러보세요" />
       ) : (
         <>
-          <div className="flex items-center justify-between px-1">
-            <span className="text-sm text-gray-500">{checkedCount}/{items.length} 완료</span>
-            <div role="progressbar" aria-valuenow={checkedCount} aria-valuemin={0} aria-valuemax={items.length} aria-label="준비물 체크 진행률" className="flex-1 mx-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${(checkedCount / items.length) * 100}%` }} />
-            </div>
-          </div>
+          <CheckProgress
+            checkedCount={checkedCount}
+            totalCount={items.length}
+            completeMessage="🎉 모든 준비물을 챙겼어요!"
+          />
 
           <div className="space-y-2">
             {remaining.map(item => {
               if (editingId === item.id) {
                 return (
-                  <div key={item.id} className={`${card.item} px-4 py-3`}>
-                    <form onSubmit={e => { e.preventDefault(); saveEdit(item.id) }} className="flex gap-2 items-center">
-                      <input autoFocus value={editingText} onChange={e => setEditingText(e.target.value)} className={`flex-1 ${inputCls}`} />
-                      <button type="submit" className={btn.inlineSolid}>저장</button>
-                      <button type="button" onClick={() => setEditingId(null)} className={btn.inlineGhost}>취소</button>
+                  <div key={item.id} className={`${card.base} p-5`}>
+                    <h3 className="font-bold text-gray-800 mb-4">준비물 수정</h3>
+                    <form onSubmit={e => { e.preventDefault(); saveEdit(item.id) }} className="space-y-3">
+                      <input autoFocus value={editingText} onChange={e => setEditingText(e.target.value)} className={inputCls} />
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setEditingId(null)} className={btn.secondary}>취소</button>
+                        <button type="submit" disabled={submitting} className={btn.action}>저장</button>
+                      </div>
                     </form>
                   </div>
                 )
@@ -219,8 +234,10 @@ export default function ChecklistTab({ tripId, userName }: Props) {
                 <div key={item.id} className={`${card.item} px-4 py-3 flex items-center gap-3`}>
                   <button type="button" onClick={() => toggleItem(item)} className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
                   <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                  <button type="button" onClick={() => { setEditingId(item.id); setEditingText(item.text) }} className={btn.inlineGhost}>수정</button>
-                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
+                  <KebabMenu items={[
+                    { label: '수정', onClick: () => { setEditingId(item.id); setEditingText(item.text); setShowForm(false) } },
+                    { label: '삭제', onClick: () => handleDeleteItem(item.id), danger: true },
+                  ]} />
                 </div>
               )
             })}
@@ -246,7 +263,9 @@ export default function ChecklistTab({ tripId, userName }: Props) {
                     <span className="text-white text-xs">✓</span>
                   </button>
                   <span className="flex-1 text-sm text-gray-400 line-through">{item.text}</span>
-                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
+                  <KebabMenu items={[
+                    { label: '삭제', onClick: () => handleDeleteItem(item.id), danger: true },
+                  ]} />
                 </div>
               ))}
             </div>

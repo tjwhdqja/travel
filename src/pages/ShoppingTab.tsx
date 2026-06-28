@@ -1,17 +1,20 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import AIResultPanel from '../components/AIResultPanel'
+import { useUndoDelete, sortByCreatedAt } from '../lib/useUndoDelete'
+import KebabMenu from '../components/KebabMenu'
 import EmptyState from '../components/EmptyState'
 import Spinner from '../components/Spinner'
 import { btn, card, input as inputCls } from '../lib/design'
+import CheckProgress from '../components/CheckProgress'
 import Toast, { useToast } from '../components/Toast'
-import { GROQ_API_KEY } from '../lib/groq'
 
 
 interface ShopItem {
   id: string
   text: string
-  checked: boolean
+  checked: boolean | null
+  created_by?: string | null
+  created_at: string | null
 }
 
 interface RecommendGroup {
@@ -224,30 +227,36 @@ interface Props {
   userName: string
   destination: string
   isActive?: boolean
+  onNavigateToExpense?: (itemName?: string) => void
 }
 
-export default function ShoppingTab({ tripId, userName, destination, isActive = true }: Props) {
+export default function ShoppingTab({ tripId, userName, destination, isActive = true, onNavigateToExpense }: Props) {
   const [items, setItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [newText, setNewText] = useState('')
-  const [showAI, setShowAI] = useState(false)
-  const [aiResult, setAiResult] = useState<RecommendGroup[] | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState('')
   const [showRecommend, setShowRecommend] = useState(false)
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const { toast, showToast } = useToast()
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingDeleteRef = useRef<{ id: string; item: ShopItem } | null>(null)
+  const deleteItem = useUndoDelete('checklists', setItems, showToast, '쇼핑 목록에서 삭제했어요', sortByCreatedAt)
 
   const presetData = SHOPPING_DATA[destination] ?? null
 
-  useEffect(() => { fetchItems() }, [tripId])
+  const fetchItems = useCallback(async () => {
+    const { data, error } = await supabase.from('checklists')
+      .select('*').eq('trip_id', tripId).eq('type', 'shopping').order('created_at')
+    if (error) showToast('쇼핑 리스트를 불러오지 못했어요', 'error')
+    setItems(data ?? [])
+    setLoading(false)
+  }, [tripId, showToast])
+
+  useEffect(() => { fetchItems() }, [fetchItems])
 
   useEffect(() => {
-    if (!isActive) { setShowAI(false); setAiResult(null) }
+    if (!isActive) { setShowForm(false); setShowRecommend(false); setEditingId(null) }
   }, [isActive])
 
   useEffect(() => {
@@ -258,11 +267,11 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
     const channel = supabase
       .channel(`shopping:${tripId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
-        if (row.type !== 'shopping') return
+        if ((row as { type: string }).type !== 'shopping') return
         setItems(prev => prev.some(i => i.id === row.id) ? prev : [...prev, row as ShopItem])
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ new: row }) => {
-        if (row.type !== 'shopping') return
+        if ((row as { type: string }).type !== 'shopping') return
         setItems(prev => prev.map(i => i.id === row.id ? row as ShopItem : i))
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'checklists', filter: `trip_id=eq.${tripId}` }, ({ old: row }) => {
@@ -272,110 +281,49 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
     return () => { supabase.removeChannel(channel) }
   }, [tripId])
 
-  async function fetchItems() {
-    const { data, error } = await supabase.from('checklists')
-      .select('*').eq('trip_id', tripId).eq('type', 'shopping').order('created_at')
-    if (error) showToast('쇼핑 리스트를 불러오지 못했어요', 'error')
-    setItems(data ?? [])
-    setLoading(false)
-  }
-
   async function deleteAllChecked() {
     const ids = items.filter(i => i.checked).map(i => i.id)
     if (ids.length === 0) return
     const { error } = await supabase.from('checklists').delete().in('id', ids)
-    if (error) { showToast('삭제에 실패했어요', 'error'); return }
+    if (error) { showToast('쇼핑 목록 삭제에 실패했어요', 'error'); return }
     setItems(prev => prev.filter(i => !i.checked))
     showToast(`${ids.length}개를 삭제했어요`)
   }
 
-  async function addItem(text: string) {
-    if (!text.trim()) return
+  async function addItem(text: string): Promise<boolean> {
+    if (!text.trim()) return false
     const existing = items.find(i => i.text === text.trim())
-    if (existing) return
+    if (existing) { showToast('이미 추가된 쇼핑 목록이에요', 'error'); return false }
+    setSubmitting(true)
     const { data } = await supabase.from('checklists')
       .insert([{ trip_id: tripId, text: text.trim(), checked: false, created_by: userName, type: 'shopping' }])
       .select().single()
-    if (data) { setItems(prev => [...prev, data]); showToast('쇼핑 아이템을 추가했어요'); setNewText('') }
-    else { showToast('쇼핑 아이템 추가에 실패했어요', 'error') }
+    setSubmitting(false)
+    if (data) { setItems(prev => [...prev, data]); showToast('쇼핑 목록에 추가했어요'); return true }
+    showToast('쇼핑 목록 추가에 실패했어요', 'error'); return false
   }
 
   async function toggleItem(item: ShopItem) {
     const { data } = await supabase.from('checklists')
       .update({ checked: !item.checked }).eq('id', item.id).select().single()
-    if (data) setItems(prev => prev.map(i => i.id === item.id ? data : i))
+    if (data) {
+      setItems(prev => prev.map(i => i.id === item.id ? data : i))
+      if (!item.checked) showToast('구매 완료했어요', 'success', onNavigateToExpense ? { label: '경비 기록', onClick: () => onNavigateToExpense(item.text) } : undefined)
+    }
   }
 
   async function saveEdit(id: string) {
     if (!editingText.trim()) return
+    setSubmitting(true)
     const { data } = await supabase.from('checklists').update({ text: editingText.trim() }).eq('id', id).select().single()
-    if (data) { setItems(prev => prev.map(i => i.id === id ? data : i)); setEditingId(null) }
-    else { showToast('수정에 실패했어요', 'error') }
+    setSubmitting(false)
+    if (data) { setItems(prev => prev.map(i => i.id === id ? data : i)); setEditingId(null); showToast('쇼핑 목록을 수정했어요') }
+    else { showToast('쇼핑 목록 수정에 실패했어요', 'error') }
   }
 
-  async function deleteItem(id: string) {
+  async function handleDeleteItem(id: string) {
     const item = items.find(i => i.id === id)
-    if (!item) return
-    if (pendingDeleteRef.current) {
-      clearTimeout(undoTimerRef.current!)
-      await supabase.from('checklists').delete().eq('id', pendingDeleteRef.current.id)
-    }
-    setItems(prev => prev.filter(i => i.id !== id))
-    const timer = setTimeout(async () => {
-      await supabase.from('checklists').delete().eq('id', id)
-      pendingDeleteRef.current = null
-    }, 3000)
-    undoTimerRef.current = timer
-    pendingDeleteRef.current = { id, item }
-    showToast('삭제했어요', 'success', {
-      label: '실행 취소',
-      onClick: () => {
-        clearTimeout(timer)
-        setItems(prev => [...prev, item])
-        pendingDeleteRef.current = null
-      },
-    })
-  }
-
-  async function generateAI() {
-    setAiLoading(true); setAiError(''); setAiResult(null)
-    const prompt = `${destination} 여행 시 사오기 좋은 특산품, 기념품, 현지 간식 추천을 아래 JSON 형식으로만 답해 (설명 없이):
-[{"label":"🍬 간식·식품","items":["아이템1","아이템2"]},{"label":"🛍 패션·뷰티","items":[]},{"label":"🎁 기념품","items":["아이템1"]}]
-각 카테고리 5개 이내, 없는 카테고리는 제외`
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.7,
-        }),
-      })
-      const data = await res.json()
-      const text: string = data.choices?.[0]?.message?.content ?? ''
-      const match = text.match(/\[[\s\S]*\]/)
-      if (match) setAiResult(JSON.parse(match[0]) as RecommendGroup[])
-    } catch { setAiError('추천 생성에 실패했습니다. 다시 시도해주세요.') }
-    setAiLoading(false)
-  }
-
-  async function addAllAiItems() {
-    if (!aiResult) return
-    const newItems = aiResult.flatMap(g => g.items).filter(text => !addedTexts.has(text))
-    if (newItems.length === 0) { setAiResult(null); return }
-    const inserts = newItems.map(text => ({ trip_id: tripId, text, checked: false, created_by: userName, type: 'shopping' }))
-    const { data } = await supabase.from('checklists').insert(inserts).select()
-    if (data) {
-      setItems(prev => [...prev, ...data])
-      showToast(`${newItems.length}개를 추가했어요`)
-    } else {
-      showToast('AI 아이템 추가에 실패했어요', 'error')
-    }
-    setAiResult(null)
+    if (item) await deleteItem(id, item)
   }
 
   const addedTexts = new Set(items.map(i => i.text))
@@ -384,15 +332,27 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
 
   return (
     <div className="space-y-4">
-      <form onSubmit={e => { e.preventDefault(); if (newText.trim()) addItem(newText.trim()) }} className="flex gap-2">
-        <input
-          placeholder="쇼핑 아이템 추가"
-          value={newText}
-          onChange={e => setNewText(e.target.value)}
-          className={`flex-1 ${inputCls}`}
-        />
-        <button type="submit" className={btn.submit}>추가</button>
-      </form>
+      {!showForm && !editingId && (
+        <button
+          type="button"
+          onClick={() => { setShowForm(true); setShowRecommend(false); setNewText('') }}
+          className={btn.primary}
+        >
+          + 쇼핑 목록 추가
+        </button>
+      )}
+      {showForm && (
+        <div className={`${card.base} p-5`}>
+          <h3 className="font-bold text-gray-800 mb-4">쇼핑 목록 추가</h3>
+          <form onSubmit={async e => { e.preventDefault(); const ok = await addItem(newText); if (ok) { setShowForm(false); setNewText('') } }} className="space-y-3">
+            <input autoFocus placeholder="쇼핑 항목 이름" value={newText} onChange={e => setNewText(e.target.value)} className={inputCls} />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setShowForm(false); setNewText('') }} className={btn.secondary}>취소</button>
+              <button type="submit" disabled={submitting} className={btn.action}>추가</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button
@@ -401,15 +361,7 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
           aria-expanded={showRecommend}
           className={`flex-1 ${btn.toggle(showRecommend)}`}
         >
-          ✨ 쇼핑 추천 {showRecommend ? '닫기' : '보기'}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setShowAI(v => !v); if (showAI) { setAiResult(null) } }}
-          aria-expanded={showAI}
-          className={`flex-1 ${btn.toggle(showAI)}`}
-        >
-          ✨ AI 추천 {showAI ? '닫기' : '보기'}
+          🛍 쇼핑 추천 {showRecommend ? '닫기' : '보기'}
         </button>
       </div>
 
@@ -438,61 +390,30 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
         </div>
       )}
 
-      {showAI && (
-        <AIResultPanel
-          title="AI 쇼핑 추천"
-          subtitle={`${destination} · 현지 특산품·기념품 추천`}
-          generateLabel="AI 추천 받기"
-          onGenerate={generateAI}
-          loading={aiLoading}
-          result={aiResult && (
-            <div className="space-y-3">
-              {aiResult.map(group => (
-                <div key={group.label}>
-                  <p className="text-xs font-semibold text-gray-400 mb-2">{group.label}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {group.items.map(p => (
-                      addedTexts.has(p)
-                        ? <span key={p} className="px-3 py-1.5 bg-gray-100 text-gray-400 text-xs rounded-full line-through">{p}</span>
-                        : <button type="button" key={p} onClick={() => addItem(p)} className={btn.chip}>+ {p}</button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          error={aiError}
-          onRetry={() => { setAiResult(null) }}
-          onAdd={addAllAiItems}
-          addLabel="전체 쇼핑 리스트에 추가"
-        />
-      )}
-
-      {/* 내 쇼핑 리스트 */}
       {loading ? (
         <Spinner />
       ) : items.length === 0 ? (
-        <EmptyState icon="🛍" title="아직 쇼핑 리스트가 비어있어요" subtitle="위에서 담고 싶은 것을 추가해보세요" />
+        <EmptyState icon="🛍" title="아직 쇼핑 목록이 없어요" subtitle="위에서 담고 싶은 것을 추가해보세요" />
       ) : (
         <>
-          <div className="px-1 space-y-2">
-            <p className="text-sm font-semibold text-gray-700">내 쇼핑 리스트</p>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">{checkedItems.length}/{items.length} 완료</span>
-              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-400 rounded-full transition-all" style={{ width: `${(checkedItems.length / items.length) * 100}%` }} />
-              </div>
-            </div>
-          </div>
+          <CheckProgress
+            checkedCount={checkedItems.length}
+            totalCount={items.length}
+            completeMessage="🎉 모든 쇼핑을 완료했어요!"
+          />
+
           <div className="space-y-2">
             {uncheckedItems.map(item => {
               if (editingId === item.id) {
                 return (
-                  <div key={item.id} className={`${card.item} px-4 py-3`}>
-                    <form onSubmit={e => { e.preventDefault(); saveEdit(item.id) }} className="flex gap-2 items-center">
-                      <input autoFocus value={editingText} onChange={e => setEditingText(e.target.value)} className={`flex-1 ${inputCls}`} />
-                      <button type="submit" className={btn.inlineSolid}>저장</button>
-                      <button type="button" onClick={() => setEditingId(null)} className={btn.inlineGhost}>취소</button>
+                  <div key={item.id} className={`${card.base} p-5`}>
+                    <h3 className="font-bold text-gray-800 mb-4">쇼핑 목록 수정</h3>
+                    <form onSubmit={e => { e.preventDefault(); saveEdit(item.id) }} className="space-y-3">
+                      <input autoFocus value={editingText} onChange={e => setEditingText(e.target.value)} className={inputCls} />
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setEditingId(null)} className={btn.secondary}>취소</button>
+                        <button type="submit" disabled={submitting} className={btn.action}>저장</button>
+                      </div>
                     </form>
                   </div>
                 )
@@ -502,8 +423,10 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
                   <button type="button" onClick={() => toggleItem(item)}
                     className="w-5 h-5 rounded-full border-2 border-gray-300 hover:border-indigo-400 flex-shrink-0 transition" />
                   <span className="flex-1 text-sm text-gray-800">{item.text}</span>
-                  <button type="button" onClick={() => { setEditingId(item.id); setEditingText(item.text) }} className={btn.inlineGhost}>수정</button>
-                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
+                  <KebabMenu items={[
+                    { label: '수정', onClick: () => { setEditingId(item.id); setEditingText(item.text); setShowForm(false) } },
+                    { label: '삭제', onClick: () => handleDeleteItem(item.id), danger: true },
+                  ]} />
                 </div>
               )
             })}
@@ -529,7 +452,9 @@ export default function ShoppingTab({ tripId, userName, destination, isActive = 
                     <span className="text-white text-xs">✓</span>
                   </button>
                   <span className="flex-1 text-sm text-gray-400 line-through">{item.text}</span>
-                  <button type="button" onClick={() => deleteItem(item.id)} className={btn.danger}>삭제</button>
+                  <KebabMenu items={[
+                    { label: '삭제', onClick: () => handleDeleteItem(item.id), danger: true },
+                  ]} />
                 </div>
               ))}
             </div>
